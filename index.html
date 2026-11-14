@@ -1,0 +1,2907 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0, user-scalable=yes">
+  <meta name="theme-color" content="#030712">
+  <meta name="color-scheme" content="dark">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <title>سند V20.3 — إصلاحات سلامة + وطواط تجريبي</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+  <style>
+    html, body { height: 100%; overscroll-behavior: none; }
+    .hidden { display: none !important; }
+    .flex { display: flex; } .flex-col { flex-direction: column; }
+    body {
+      -webkit-user-select: none; user-select: none;
+      -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    }
+    #main-screen { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; background: #030712; }
+    #top-bar {
+      flex: 0 0 auto; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px;
+      padding: calc(env(safe-area-inset-top) + 6px) 8px 6px;
+      background: #030712; border-bottom: 1px solid #1f2937; z-index: 30;
+    }
+    #top-bar button {
+      min-height: 50px; padding: 6px 4px; border-radius: 12px;
+      font-size: 13px; font-weight: 800; display: flex; align-items: center;
+      justify-content: center; gap: 4px; text-align: center;
+    }
+    #mode-strip {
+      flex: 0 0 auto; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px;
+      padding: 6px 8px; background: #0b1120; border-bottom: 1px solid #1e293b; z-index: 25;
+    }
+    #mode-strip button {
+      min-height: 46px; padding: 5px 4px; border-radius: 10px;
+      font-size: 12px; font-weight: 800; border: 1px solid #334155;
+      background: #111827; color: #cbd5e1; transition: all .15s;
+    }
+    #mode-strip button[aria-pressed="true"] {
+      background: #1d4ed8; border-color: #93c5fd; color: #ffffff;
+    }
+    #control-dock {
+      flex: 0 0 auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px;
+      padding: 8px 8px calc(env(safe-area-inset-bottom) + 12px);
+      background: #030712; border-top: 1px solid #1f2937; z-index: 30;
+    }
+    #control-dock button {
+      min-width: 0; min-height: 70px; padding: 8px 4px; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 3px; border-radius: 14px;
+      font-size: 13px; line-height: 1.2; font-weight: 800; text-align: center;
+      white-space: normal; overflow-wrap: anywhere;
+    }
+    #control-dock .control-icon { font-size: 1.35rem; line-height: 1; }
+    @media (max-width: 360px) {
+      #control-dock button { min-height: 62px; font-size: 11.5px; }
+      #mode-strip button { font-size: 11px; min-height: 42px; }
+      #top-bar button { font-size: 12px; min-height: 44px; }
+    }
+    @media (max-height: 670px) {
+      #control-dock button { min-height: 58px; padding: 6px 3px; }
+      #mode-strip button { min-height: 40px; }
+      #top-bar button { min-height: 42px; }
+    }
+    button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 4px solid #60a5fa; outline-offset: -3px;
+    }
+    #capture-btn { cursor: pointer; padding-bottom: 118px; padding-top: 40px; }
+    #risk-indicator { font-weight: 800; }
+    #settings-screen { justify-content: flex-start; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    #settings-screen a, #settings-screen button { min-height: 52px; }
+    /* القوائم المنسدلة داخل صفوف flex: min-width الافتراضي = عرض أطول خيار، فتخرج من الإطار. */
+    #settings-screen select { min-width: 0; max-width: 100%; text-overflow: ellipsis; }
+    #ocr-lang-row { min-width: 0; }
+    #ocr-lang-row label { flex: 0 0 auto; }
+    #ocr-lang-row select { flex: 1 1 0%; min-width: 0; }
+    input[type="checkbox"] { width: 25px; height: 25px; flex: 0 0 auto; accent-color: #2563eb; }
+    #api-key-input, #proxy-url-input {
+      direction: ltr; text-align: left; font-size: 16px; min-height: 52px;
+      user-select: text !important; -webkit-user-select: text !important;
+    }
+    .settings-step {
+      border: 1px solid #374151; border-radius: 16px; padding: 14px;
+      background: rgba(31, 41, 55, .78);
+    }
+    .settings-action { width: 100%; border-radius: 12px; padding: 13px; font-weight: 700; }
+    .risk-danger { color: #fecaca; border-color: #b91c1c; background: rgba(127, 29, 29, .72); }
+    .risk-caution { color: #fde68a; border-color: #b45309; background: rgba(120, 53, 15, .56); }
+    .risk-none { color: #bfdbfe; border-color: #1d4ed8; background: rgba(30, 58, 138, .48); }
+    .risk-unknown { color: #e5e7eb; border-color: #4b5563; background: rgba(31, 41, 55, .82); }
+
+    /* === V20.5: تخطيط الهواتف + معاينة الكاميرا (يتغلب على Tailwind بـ !important) === */
+    #main-screen { height: var(--app-h, 100dvh) !important; }
+    @media (max-height: 700px) {
+      #top-bar button { min-height: 40px !important; }
+      #mode-strip button { min-height: 38px !important; }
+      #control-dock { gap: 5px !important; padding-top: 6px !important; }
+      #control-dock button { min-height: 52px !important; font-size: 12px !important; padding: 4px 2px !important; }
+      #control-dock .control-icon { font-size: 1.1rem !important; }
+    }
+    @media (max-height: 600px) {
+      #top-bar button { min-height: 36px !important; font-size: 11.5px !important; }
+      #mode-strip button { min-height: 34px !important; }
+      #control-dock button { min-height: 44px !important; font-size: 11px !important; }
+    }
+    body #camera-preview { position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important; object-fit: cover !important; opacity: 1 !important; border: 0 !important; border-radius: 0 !important; z-index: 0 !important; }
+    body #camera-preview.mirror { transform: scaleX(-1) !important; }
+    body:not(.preview-off) #capture-btn { background: linear-gradient(to bottom, transparent 30%, rgba(3,7,18,.82)) !important; justify-content: flex-end !important; padding: 0 0 12px !important; }
+    body:not(.preview-off) #capture-btn span { text-shadow: 0 1px 4px #000; }
+    body.preview-off #camera-preview { inset: auto !important; top: 8px !important; right: 8px !important; width: 56px !important; height: 56px !important; opacity: .6 !important; border: 1px solid #374151 !important; border-radius: 8px !important; z-index: 10 !important; }
+
+    /* احتياط: تخطيط أساسي يبقى سليماً حتى لو لم يُحمَّل Tailwind (شبكة بطيئة/حجب). Tailwind يتجاوزها عند تحميله. */
+    .relative{position:relative}.absolute{position:absolute}.inset-0{top:0;right:0;bottom:0;left:0}.inset-x-0{left:0;right:0}
+    .bottom-0{bottom:0}.top-2{top:.5rem}.left-2{left:.5rem}.right-2{right:.5rem}.z-10{z-index:10}.z-20{z-index:20}.z-30{z-index:30}
+    .w-full{width:100%}.h-full{height:100%}.w-14{width:3.5rem}.h-14{height:3.5rem}.flex-1{flex:1 1 0%}.min-h-0{min-height:0}
+    .items-center{align-items:center}.justify-center{justify-content:center}.gap-1{gap:.25rem}.gap-2{gap:.5rem}.gap-3{gap:.75rem}.gap-4{gap:1rem}
+    .object-cover{object-fit:cover}.pointer-events-none{pointer-events:none}.text-center{text-align:center}.bg-gray-900{background:#111827}
+    .text-5xl{font-size:3rem}.text-xl{font-size:1.25rem}.text-sm{font-size:.875rem}.text-xs{font-size:.75rem}.font-bold{font-weight:700}
+    .rounded-lg{border-radius:.5rem}.p-2{padding:.5rem}.p-4{padding:1rem}.px-6{padding-left:1.5rem;padding-right:1.5rem}
+    #main-screen{background:#030712;color:#f3f4f6}
+  </style>
+<script>
+  (function () { function h() { var v = window.visualViewport; document.documentElement.style.setProperty('--app-h', Math.round(v ? v.height : window.innerHeight) + 'px'); }
+    h(); window.addEventListener('resize', h); window.addEventListener('orientationchange', function () { setTimeout(h, 250); });
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', h); })();
+</script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex flex-col">
+
+  <!-- ================= شاشة الإعدادات ================= -->
+  <main id="settings-screen" class="p-4 flex flex-col min-h-screen max-w-xl mx-auto w-full" role="main" aria-labelledby="settings-heading">
+    <div class="w-full flex flex-col gap-4 pb-10">
+      <h1 id="settings-heading" tabindex="-1" class="text-2xl font-bold text-center text-blue-400">
+        سند V20.2 — المساعد البصري الشامل المجاني
+      </h1>
+      <p class="text-sm text-gray-200 leading-relaxed">
+        مشروع إنساني مجاني بالكامل لفاقدي وضعاف البصر في مصر: يعمل <strong>بلا تكلفة أو بطاقة بنكية</strong>. يجمع بين الرؤية المحلية (المسافة بالخطوات، تحذير الاقتراب السريع، الكشاف التلقائي في الظلام، <strong>وطواط الظلام (تجريبي)</strong> لكشف الحوائط والأبواب المغلقة، قراءة النصوص وصلاحية الدواء، العملة المصرية، فحص البقع وتنسيق الملابس، ومدرب توجيه المرآة) + دعم الخادم المجاني ومفاتيح Gemini 3 و OpenRouter المجانية.
+      </p>
+
+      <p id="settings-status" role="status" aria-live="polite"
+         class="rounded-xl border border-blue-800/70 bg-blue-950/40 p-3 text-sm font-medium text-blue-100 min-h-[3rem]">
+        اضغط «ابدأ الآن» للعمل فوراً مجاناً.
+      </p>
+
+      <button id="quick-start-button" type="button" onclick="startFreeMode()"
+              class="settings-action bg-green-700 hover:bg-green-600 active:bg-green-800 text-white text-xl"
+              style="min-height: 76px;">
+        <span aria-hidden="true">▶ </span>ابدأ الآن (مجاني بالكامل)
+      </button>
+
+      <label class="settings-step flex items-center gap-3 text-sm text-gray-100"><input id="preview-check" type="checkbox"><span>عرض معاينة الكاميرا كاملة (اختياري — الافتراضي: مربع صغير كما كان)</span></label>
+
+      <button id="setup-guide-button" type="button" onclick="speakSetupGuide()"
+              class="settings-action bg-indigo-700 hover:bg-indigo-600 text-white text-base">
+        <span aria-hidden="true">🔊 </span>استمع لشرح الاستخدام والأمان
+      </button>
+
+      <section class="settings-step" aria-labelledby="local-tools-heading">
+        <h2 id="local-tools-heading" class="text-lg font-bold text-emerald-300 mb-3">1. قدرات الحماية المحلية + معايرة وطواط الظلام</h2>
+        <div class="flex flex-col gap-3 text-sm">
+
+          <div class="rounded-xl border border-indigo-700/80 bg-indigo-950/30 p-3 space-y-2">
+            <strong class="block text-base text-indigo-200">🦇 معايرة وطواط الظلام (تجريبي — ثانية واحدة)</strong>
+            <p class="text-gray-300 text-xs leading-relaxed">
+              ميزة تجريبية تعتمد على خصائص سماعة كل هاتف. وجّه الهاتف نحو <strong>فضاء مفتوح</strong> (بعيداً عن أي حائط بأكثر من 3 أمتار، بدون سماعة أذن وبرفع صوت الوسائط 70%) واضغط الزر لحفظ بصمة سماعة هاتفك. لا تعتمد عليها وحدها في التنقل.
+              <strong>يمنع التطبيق الوطواط والمعايرة تلقائياً</strong> إذا اكتشف سماعة أذن، وينبّهك في النتيجة إذا لم يستطع التأكد من مسار الصوت.
+            </p>
+            <div class="flex gap-2">
+              <button id="calibrate-sonar-btn" type="button" onclick="calibrateBatSonarOpenAir()"
+                      class="flex-1 rounded-xl bg-indigo-700 hover:bg-indigo-600 py-3 px-3 font-bold text-xs">
+                🦇 عاير الهاتف في فضاء مفتوح
+              </button>
+              <button type="button" onclick="clearSonarCalibration()"
+                      class="rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-600 py-3 px-3 font-bold text-xs">
+                مسح المعايرة
+              </button>
+            </div>
+            <p id="sonar-cal-status" class="text-xs text-indigo-200 font-medium"></p>
+          </div>
+
+          <label class="flex items-start gap-3 rounded-xl border border-blue-700/70 bg-blue-950/20 p-3 cursor-pointer">
+            <input id="touch-explore-checkbox" type="checkbox">
+            <span>
+              <strong class="block text-base text-blue-200">الرادار اللمسي الصوتي (فقط لمن أوقف TalkBack)</strong>
+              <span class="text-gray-300">ينطق اسم الزر عند تمرير الإصبع فوقه قبل الضغط. (أوقفه عند استخدام TalkBack).</span>
+            </span>
+          </label>
+
+          <label class="flex items-start gap-3 rounded-xl border border-gray-700 p-3 cursor-pointer">
+            <input id="live-local-scan-checkbox" type="checkbox" checked>
+            <span>
+              <strong class="block text-base text-white">رصد الأجسام والمسافة بالخطوات + تحذير الاقتراب السريع</strong>
+              <span class="text-gray-300">يحسب المسافة بالخطوات وينبه إذا اقتربت مركبة أو شخص بسرعة.</span>
+            </span>
+          </label>
+
+          <label class="flex items-start gap-3 rounded-xl border border-gray-700 p-3 cursor-pointer">
+            <input id="nav-mode-checkbox" type="checkbox" checked>
+            <span>
+              <strong class="block text-base text-white">تنبيهات السير المستمرة + فحص ميل الهاتف وتغطية العدسة</strong>
+              <span class="text-gray-300">ينبهك إذا غطى إصبعك الكاميرا أو مالت للسماء. (لا تغني عن العصا البيضاء).</span>
+            </span>
+          </label>
+
+          <label class="flex items-start gap-3 rounded-xl border border-gray-700 p-3 cursor-pointer">
+            <input id="spatial-audio-checkbox" type="checkbox" checked>
+            <span>
+              <strong class="block text-base text-white">صوت اتجاهي في السماعة (يمين / يسار / وسط)</strong>
+              <span class="text-gray-300">نغمة تُسمع في الأذن المطابقة لموقع العائق.</span>
+            </span>
+          </label>
+
+          <label class="flex items-start gap-3 rounded-xl border border-gray-700 p-3 cursor-pointer">
+            <input id="auto-torch-checkbox" type="checkbox" checked>
+            <span>
+              <strong class="block text-base text-white">الكشاف التلقائي الذكي في الظلام</strong>
+              <span class="text-gray-300">يشغل الفلاش تلقائياً في الظلام ويطفئه عند القراءة أو عند عودة النور.</span>
+            </span>
+          </label>
+
+          <div class="rounded-xl border border-purple-800/70 bg-purple-950/20 p-3 space-y-2">
+            <strong class="block text-base text-purple-200">📖 قارئ النصوص + فاحص تاريخ انتهاء الأدوية</strong>
+            <div id="ocr-lang-row" class="flex items-center gap-2">
+              <label for="ocr-lang-select" class="text-xs font-bold text-gray-200">اللغة:</label>
+              <select id="ocr-lang-select" class="flex-1 p-2 bg-gray-800 border border-gray-600 rounded-lg text-sm">
+                <option value="ara+eng">عربي + إنجليزي (الأفضل للأدوية والعملة والفواتير)</option>
+                <option value="ara">عربي فقط (أسرع للكتب والورق العربي)</option>
+              </select>
+            </div>
+            <button id="preload-ocr-btn" type="button" onclick="preloadOcrFromSettings()"
+                    class="w-full rounded-xl bg-purple-800 hover:bg-purple-700 py-3 px-4 font-bold text-sm">
+              📥 تنزيل وحفظ حزمة القراءة الآن (مرة واحدة)
+            </button>
+          </div>
+
+          <div class="rounded-xl border border-emerald-700/70 bg-emerald-950/20 p-3 space-y-2">
+            <strong class="block text-base text-emerald-200">🚪 محركات رؤية الحوائط والأبواب والسلالم والعمق (اختيارية)</strong>
+            <p class="text-gray-300 text-xs leading-relaxed">تعمل محلياً بلا إنترنت بعد التحميل (تتطلب HTTPS أو localhost).</p>
+            <button id="load-segformer-btn" type="button" onclick="enableAndLoadSegFormer()"
+                    class="w-full rounded-xl bg-emerald-800 hover:bg-emerald-700 py-2.5 px-3 font-bold text-xs">
+              🚪 تحميل نموذج الحوائط والأبواب والسلالم والمياه (SegFormer — 4.4 ميجا)
+            </button>
+            <button id="load-depth-btn" type="button" onclick="enableAndLoadNeuralDepth()"
+                    class="w-full rounded-xl bg-cyan-800 hover:bg-cyan-700 py-2.5 px-3 font-bold text-xs">
+              📏 تحميل محرك العمق ثلاثي الأبعاد (Depth Anything — 27 ميجا)
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="settings-step" aria-labelledby="packs-heading">
+        <h2 id="packs-heading" class="text-lg font-bold text-teal-300 mb-3">2. حزم المعرفة المصرية العامة (مجانية — تُنزَّل مرة وتعمل بلا إنترنت)</h2>
+        <div class="flex flex-col gap-3 text-sm">
+          <p class="text-gray-300 text-xs leading-relaxed">
+            الحزم معلومات عامة (حفر، كباري، محطات، لافتات...) تُبنى خارج الهاتف وتُنزَّل هنا للقراءة فقط.
+            هي <strong>منفصلة تماماً</strong> عن «أشيائي» الخاصة: حذفها أو تحديثها لا يمسّ ما علّمته للهاتف، وأشياؤك لا تُرفع لأي مكان.
+          </p>
+          <label for="packs-url-input" class="font-bold text-teal-200">رابط ملف فهرس الحزم (manifest):</label>
+          <input id="packs-url-input" type="url" dir="ltr" placeholder="https://.../packs/manifest.json"
+                 class="w-full p-3 bg-gray-800 border border-gray-600 rounded-xl text-white" style="font-size:16px; min-height:52px; text-align:left; user-select:text;">
+          <button id="update-packs-btn" type="button" onclick="updatePacksFromManifest()"
+                  class="w-full rounded-xl bg-teal-800 hover:bg-teal-700 py-3 px-3 font-bold text-sm">
+            ⬇️ تحقق من التحديثات ونزّلها
+          </button>
+          <label for="import-pack-input" class="font-bold text-teal-200">أو استورد ملف حزمة من هاتفك (بدون إنترنت):</label>
+          <input id="import-pack-input" type="file" accept=".json,application/json"
+                 class="w-full p-2 bg-gray-800 border border-gray-600 rounded-xl text-white text-sm">
+          <p id="packs-status" role="status" aria-live="polite" class="text-xs text-teal-100 font-medium min-h-[1.5rem]"></p>
+          <ul id="packs-list" class="text-xs text-gray-200 list-disc pr-5 space-y-1"></ul>
+          <button id="clear-packs-btn" type="button" onclick="clearInstalledPacks()"
+                  class="w-full rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-600 py-3 px-3 font-bold text-xs">
+            حذف كل الحزم العامة (لا يحذف أشيائي)
+          </button>
+        </div>
+      </section>
+
+      <details class="settings-step">
+        <summary class="text-base font-bold text-teal-300" style="min-height:48px; display:flex; align-items:center; cursor:pointer;">
+          نسخة احتياطية لأشيائي (على هاتفك فقط)
+        </summary>
+        <div class="flex flex-col gap-3 text-sm mt-2">
+          <p class="text-gray-300 text-xs leading-relaxed">
+            الملف يحوي <strong>أسماء أشيائك وبصماتها الرقمية فقط</strong> (لا صور)، وهو غير مشفّر؛ احفظه في مكان تثق به. الاستعادة <strong>تضيف</strong> إلى ما عندك ولا تمسح شيئاً. صوتياً يمكنك قول: «احفظ نسخة من أشيائي».
+          </p>
+          <button id="export-personal-btn" type="button" onclick="exportPersonal()"
+                  class="w-full rounded-xl bg-teal-800 hover:bg-teal-700 py-3 px-3 font-bold text-sm">
+            ⬇️ احفظ نسخة من أشيائي
+          </button>
+          <label for="import-personal-input" class="font-bold text-teal-200">استعادة أشيائي من ملف نسخة احتياطية:</label>
+          <input id="import-personal-input" type="file" accept=".json,application/json"
+                 class="w-full p-2 bg-gray-800 border border-gray-600 rounded-xl text-white text-sm">
+          <p id="personal-backup-status" role="status" aria-live="polite" class="text-xs text-teal-100 font-medium min-h-[1.5rem]"></p>
+        </div>
+      </details>
+
+      <details class="settings-step">
+        <summary class="text-base font-bold text-amber-300" style="min-height:48px; display:flex; align-items:center; cursor:pointer;">
+          3. العيون السحابية الكاملة (اختيارية — مجانية 100% — بدون بطاقة بنكية)
+        </summary>
+        <div class="pt-3 flex flex-col gap-3 text-sm">
+          <p class="rounded-xl border border-amber-700 bg-amber-950/30 p-3 text-xs leading-relaxed text-amber-100"><strong>تنبيه خصوصية:</strong> عند تفعيل العيون السحابية تُرسل الصور (قد تظهر فيها وجوهك أو أدويتك أو أوراقك) إلى Google أو OpenRouter. في الطبقات المجانية قد تُستخدم البيانات لتحسين منتجاتهم. لا تصوّر بطاقات الهوية أو الأوراق البنكية أو أي شيء خاص. الوضع المحلي لا يرسل شيئاً.</p>
+          <form class="flex flex-col gap-3" onsubmit="saveSettings(event)">
+            <label for="proxy-url-input" class="font-bold text-emerald-300">رابط الخادم المجاني المشترك (Cloudflare Worker):</label>
+            <input id="proxy-url-input" type="url" dir="ltr" placeholder="https://sanad-proxy.yourname.workers.dev"
+                   class="w-full p-3 bg-gray-800 border border-gray-600 rounded-xl text-white">
+
+            <label for="provider-select" class="font-bold text-gray-100">أو استخدم مفتاحك المجاني المباشر:</label>
+            <select id="provider-select" onchange="onProviderChange()" class="w-full min-h-[50px] p-3 bg-gray-800 border border-gray-600 rounded-xl text-white">
+              <option value="gemini">Google Gemini (نماذج Flash 3 المجانية — 500 طلب/يوم)</option>
+              <option value="openrouter">OpenRouter (نماذج :free المجانية)</option>
+            </select>
+
+            <div class="flex gap-2">
+              <a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer"
+                 class="flex-1 rounded-xl bg-blue-700 hover:bg-blue-600 text-white text-center py-3 px-2 font-bold flex items-center justify-center text-xs">
+                مفتاح Gemini المجاني
+              </a>
+              <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer"
+                 class="flex-1 rounded-xl bg-teal-700 hover:bg-teal-600 text-white text-center py-3 px-2 font-bold flex items-center justify-center text-xs">
+                مفتاح OpenRouter المجاني
+              </a>
+            </div>
+
+            <input id="api-key-input" type="password" autocomplete="off" dir="ltr" placeholder="AIza... أو sk-or-v1-... (اختياري)"
+                   class="w-full p-3 bg-gray-800 border border-gray-600 rounded-xl text-white">
+
+            <label for="model-input" class="font-bold text-gray-200">النموذج:</label>
+            <select id="model-input" class="w-full min-h-[50px] p-3 bg-gray-800 border border-gray-600 rounded-xl text-white"></select>
+
+            <label class="flex items-start gap-3 rounded-xl border border-gray-700 p-3 cursor-pointer">
+              <input id="remember-key-checkbox" type="checkbox" checked>
+              <span class="font-bold">حفظ الإعدادات على هذا الهاتف</span>
+            </label>
+
+            <button id="save-button" type="submit" class="settings-action bg-green-800 hover:bg-green-700 text-white">
+              فحص وتفعيل العيون الكاملة
+            </button>
+            <button type="button" onclick="forgetSavedKey()" class="settings-action bg-red-950 hover:bg-red-900 border border-red-800 text-red-100">
+              حذف الخادم والمفتاح والعودة للمحلي فقط
+            </button>
+          </form>
+        </div>
+      </details>
+    </div>
+  </main>
+
+  <!-- ================= الشاشة الرئيسية ================= -->
+  <div id="main-screen" class="hidden flex-1 flex flex-col">
+    <div id="top-bar" role="toolbar" aria-label="التحكم السريع">
+      <button id="stop-btn" type="button" onclick="stopSpeaking()" data-speak-label="إيقاف الصوت فوراً" aria-label="إيقاف الصوت فوراً"
+              class="bg-red-950 hover:bg-red-900 border border-red-700 text-red-100">
+        <span aria-hidden="true">⏹</span><span>اسكت</span>
+      </button>
+      <button id="repeat-btn" type="button" onclick="repeatLast()" data-speak-label="إعادة آخر وصف" aria-label="إعادة آخر وصف"
+              class="bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-100">
+        <span aria-hidden="true">🔁</span><span>أعد</span>
+      </button>
+      <button id="torch-btn" type="button" onclick="toggleTorch()" data-speak-label="تشغيل أو إطفاء الكشاف" aria-label="الكشاف"
+              class="bg-amber-950 hover:bg-amber-900 border border-amber-700 text-amber-100">
+        <span aria-hidden="true">🔦</span><span id="torch-label">الكشاف</span>
+      </button>
+      <button id="settings-btn" type="button" onclick="openSettings()" data-speak-label="فتح الإعدادات ومعايرة الوطواط" aria-label="الإعدادات"
+              class="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-gray-100">
+        <span aria-hidden="true">⚙️</span><span>الإعدادات</span>
+      </button>
+    </div>
+
+    <div id="mode-strip" role="radiogroup" aria-label="أوضاع الحياة اليومية">
+      <button id="mode-walk" type="button" aria-pressed="true" onclick="setLifeMode('walk')" data-speak-label="وضع الطريق والسلالم">🛣️ الطريق</button>
+      <button id="mode-home" type="button" aria-pressed="false" onclick="setLifeMode('home')" data-speak-label="وضع الأبواب والبيت">🚪 البيت</button>
+      <button id="mode-clothes" type="button" aria-pressed="false" onclick="setLifeMode('clothes')" data-speak-label="وضع فحص الملابس والبقع">👔 الملابس</button>
+      <button id="mode-grooming" type="button" aria-pressed="false" onclick="setLifeMode('grooming')" data-speak-label="وضع المرآة: الشعر والوجه">💇 المرآة</button>
+    </div>
+
+    <div class="relative flex-1 min-h-0">
+      <video id="camera-preview" autoplay playsinline muted aria-hidden="true"
+             class="absolute top-2 right-2 w-14 h-14 object-cover rounded-lg border border-gray-700 opacity-60 pointer-events-none z-10"></video>
+
+      <div class="absolute top-2 left-2 flex flex-col gap-1 z-10 pointer-events-none">
+        <div id="local-scanner-badge" class="bg-emerald-950/90 border border-emerald-700 text-emerald-200 text-[11px] font-bold px-2 py-0.5 rounded-full">الأجسام والمسافة: جارٍ التحضير...</div>
+        <div id="seg-badge" class="bg-teal-950/90 border border-teal-700 text-teal-200 text-[11px] font-bold px-2 py-0.5 rounded-full hidden">SegFormer: نشط</div>
+        <div id="depth-badge" class="bg-cyan-950/90 border border-cyan-700 text-cyan-200 text-[11px] font-bold px-2 py-0.5 rounded-full hidden">العمق الذكي: نشط</div>
+        <div id="auto-torch-badge" class="bg-amber-950/90 border border-amber-700 text-amber-200 text-[11px] font-bold px-2 py-0.5 rounded-full">الكشاف التلقائي: مفعل</div>
+        <div id="torch-badge" class="bg-yellow-900/95 border border-yellow-500 text-yellow-100 text-[11px] font-bold px-2 py-0.5 rounded-full hidden">الكشاف: مضاء الآن</div>
+      </div>
+
+      <canvas id="canvas" class="hidden" aria-hidden="true"></canvas>
+      <canvas id="probe-canvas" width="160" height="120" class="hidden" aria-hidden="true"></canvas>
+
+      <button id="capture-btn" type="button" onclick="captureAndAnalyze()"
+              data-speak-label="وسط الشاشة: المس هنا لفحص المشهد الآن"
+              aria-label="افحص المشهد الآن. المس للوصف."
+              class="absolute inset-0 w-full h-full flex flex-col items-center justify-center gap-2 bg-gray-900 active:bg-gray-800 transition-colors">
+        <span id="mode-hero-icon" class="text-5xl" aria-hidden="true">🛣️</span>
+        <span id="mode-hero-title" class="text-xl font-bold text-blue-300">فحص الطريق والسلالم والحفر</span>
+        <span id="nav-hint" class="text-xs text-emerald-300 px-6 text-center font-medium">تنبيهات السير بالخطوات نشطة (لا تغني عن العصا)</span>
+        <span class="text-xs text-gray-400 px-6 text-center">المس وسط الشاشة للوصف، أو اختر أداة من الأسفل</span>
+      </button>
+
+      <div class="absolute bottom-0 inset-x-0 p-2 pointer-events-none z-20">
+        <div class="bg-gray-950/95 border border-gray-700 p-2.5 rounded-2xl text-center shadow-lg space-y-1.5">
+          <p id="risk-indicator" class="hidden border rounded-xl px-3 py-1 text-xs" aria-live="assertive"></p>
+          <p id="status-text" role="status" aria-live="polite" class="text-sm font-medium leading-relaxed text-gray-100">
+            سند جاهز. المس الوسط لوصف المشهد، أو اختر أداة من الأسفل.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div id="control-dock" role="navigation" aria-label="الأدوات السريعة">
+      <button id="read-text-btn" type="button" onclick="readTextSmart()" data-speak-label="قراءة النص وفحص صلاحية الدواء" aria-label="اقرأ النص"
+              class="bg-purple-950 hover:bg-purple-900 border border-purple-700 transition">
+        <span class="control-icon" aria-hidden="true">📖</span><span>اقرأ النص</span>
+      </button>
+      <button id="voice-cmd-btn" type="button" onclick="activateVoiceCommands()" data-speak-label="اسأل بالصوت أو أعط أمراً" aria-label="اسأل بالصوت"
+              class="bg-blue-900 hover:bg-blue-800 border border-blue-500 transition">
+        <span class="control-icon" aria-hidden="true">🎤</span><span>اسأل / أمر</span>
+      </button>
+      <button id="currency-btn" type="button" onclick="recognizeEgyptianCurrency()" data-speak-label="تمييز العملة المصرية" aria-label="العملة المصرية"
+              class="bg-emerald-950 hover:bg-emerald-900 border border-emerald-700 transition">
+        <span class="control-icon" aria-hidden="true">💵</span><span>العملة</span>
+      </button>
+      <button id="distance-btn" type="button" onclick="measureDistanceNow()" data-speak-label="حساب المسافة والأبواب والسلالم" aria-label="المسافة والمكان"
+              class="bg-cyan-950 hover:bg-cyan-900 border border-cyan-700 transition">
+        <span class="control-icon" aria-hidden="true">📏</span><span>المسافة والمكان</span>
+      </button>
+      <button id="color-light-btn" type="button" onclick="readColorAndMatchAction()" data-speak-label="معرفة اللون والنور وفحص البقع أو مقارنة طقم الملابس" aria-label="اللون والطقم"
+              class="bg-sky-950 hover:bg-sky-900 border border-sky-700 transition">
+        <span class="control-icon" aria-hidden="true">🎨</span><span id="color-btn-label">اللون والطقم</span>
+      </button>
+      <button id="sonar-btn" type="button" onclick="runBatSonarProbe()" data-speak-label="وطواط الظلام تجريبي — لفحص الحوائط والأبواب المغلقة أمامك" aria-label="وطواط الظلام تجريبي"
+              class="bg-indigo-950 hover:bg-indigo-900 border border-indigo-700 transition">
+        <span class="control-icon" aria-hidden="true">🦇</span><span>وطواط (تجريبي)</span>
+      </button>
+      <button id="mine-id-btn" type="button" onclick="identifyPersonal()" data-speak-label="ما هذا الشيء؟ يتعرف على أشيائك التي علمتها" aria-label="ما هذا"
+              class="bg-teal-950 hover:bg-teal-900 border border-teal-700 transition">
+        <span class="control-icon" aria-hidden="true">🏷️</span><span>ما هذا؟</span>
+      </button>
+      <button id="mine-teach-btn" type="button" onclick="teachPersonal()" data-speak-label="علمني شيئاً جديداً من أشيائك" aria-label="علمني شيئاً"
+              class="bg-teal-950 hover:bg-teal-900 border border-teal-700 transition">
+        <span class="control-icon" aria-hidden="true">➕</span><span>علّمني</span>
+      </button>
+      <button id="mine-list-btn" type="button" onclick="listPersonal()" data-speak-label="أشيائي المحفوظة" aria-label="أشيائي"
+              class="bg-teal-950 hover:bg-teal-900 border border-teal-700 transition">
+        <span class="control-icon" aria-hidden="true">📋</span><span>أشيائي</span>
+      </button>
+    </div>
+  </div>
+
+<script>
+const DEFAULT_PUBLIC_PROXY_URL = '';
+
+const LS_KEY = 's3aed_api_key', SS_KEY = 's3aed_api_key_session', LS_PROXY = 's3aed_proxy_url';
+const LS_PROVIDER = 's3aed_provider', LS_MODEL = 's3aed_model', LS_OCR_LANG = 's3aed_ocr_lang';
+const LS_LOCAL_SCAN = 's3aed_local_live_scan', LS_NAV_MODE = 's3aed_nav_mode', LS_SPATIAL = 's3aed_spatial_audio';
+const LS_AUTO_TORCH = 's3aed_auto_torch', LS_LIFE_MODE = 's3aed_life_mode', LS_EXPLORE = 's3aed_touch_explore';
+const LS_SONAR_CAL = 's3aed_sonar_open_air_profile';
+
+const PROVIDERS = {
+  gemini: {
+    defaultModel: 'gemini-3.5-flash-lite',
+    models: {
+      'gemini-3.5-flash-lite': { label: 'Gemini 3.5 Flash-Lite — الافتراضي المجاني (~500 طلب/يوم)', thinkingLevel: 'minimal' },
+      'gemini-3.1-flash-lite': { label: 'Gemini 3.1 Flash-Lite — خفيف ومجاني', thinkingLevel: 'minimal' },
+      'gemini-3.6-flash':      { label: 'Gemini 3.6 Flash — متوازن ومجاني', thinkingLevel: 'minimal' },
+      'gemini-3.8-flash':      { label: 'Gemini 3.8 Flash — الأذكى (حد مجاني ~20 طلب/يوم)', thinkingLevel: 'low' },
+      'gemini-2.5-flash-lite': { label: 'Gemini 2.5 Flash-Lite — للحسابات القديمة فقط', thinkingBudget: 0 }
+    }
+  },
+  openrouter: {
+    defaultModel: 'nvidia/nemotron-3.5-super-vl:free',
+    models: {
+      'nvidia/nemotron-3.5-super-vl:free':                  { label: 'Nemotron 3.5 Super VL (:free) — الأسرع للرؤية' },
+      'dots-studio/dots-3-note-preview:free':               { label: 'Dots 3 Note Preview (:free)' },
+      'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free': { label: 'Nemotron 3 Nano Omni (:free)' },
+      'openrouter/free':                                    { label: 'الموجه المجاني التلقائي (openrouter/free)' }
+    }
+  }
+};
+
+function readLS(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } }
+function writeLS(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) {} }
+
+let proxyUrl = readLS(LS_PROXY, '') || DEFAULT_PUBLIC_PROXY_URL;
+let apiKey = '';
+try { apiKey = sessionStorage.getItem(SS_KEY) || localStorage.getItem(LS_KEY) || localStorage.getItem('gemini_api_key') || ''; } catch (e) {}
+let provider = PROVIDERS[readLS(LS_PROVIDER, 'gemini')] ? readLS(LS_PROVIDER, 'gemini') : 'gemini';
+let modelName = readLS(LS_MODEL, PROVIDERS[provider].defaultModel);
+if (!PROVIDERS[provider].models[modelName]) modelName = PROVIDERS[provider].defaultModel;
+
+let ocrLang = readLS(LS_OCR_LANG, 'ara+eng') === 'ara' ? 'ara' : 'ara+eng';
+let localScanEnabled = readLS(LS_LOCAL_SCAN, 'true') !== 'false';
+let navModeEnabled = readLS(LS_NAV_MODE, 'true') !== 'false';
+let spatialAudioEnabled = readLS(LS_SPATIAL, 'true') !== 'false';
+let autoTorchEnabled = readLS(LS_AUTO_TORCH, 'true') !== 'false';
+let touchExploreEnabled = readLS(LS_EXPLORE, 'false') === 'true';
+let lifeMode = ['walk', 'home', 'clothes', 'grooming'].includes(readLS(LS_LIFE_MODE, 'walk')) ? readLS(LS_LIFE_MODE, 'walk') : 'walk';
+function hasCloudVision() { return Boolean(proxyUrl || apiKey); }
+
+let sonarCalibration = null;
+try { const rawCal = readLS(LS_SONAR_CAL, ''); if (rawCal) sonarCalibration = JSON.parse(rawCal); } catch (e) { sonarCalibration = null; }
+
+let videoStream = null, facingMode = 'environment';
+let isProcessing = false, lastDescription = '', lastRecognizedText = '';
+let arabicVoice = null, wakeLock = null, assistantSpeaking = false, speechWatchdog = null;
+let recognition = null, isListening = false, isVerifyingApiKey = false;
+let torchOn = false, torchSupported = false, torchAutoActivated = false, torchManualOverride = false;
+let darkStreak = 0, brightStreak = 0, lastLensWarnTime = 0, lastTiltWarnTime = 0;
+
+let objectModel = null, objectModelLoading = null, isScanningFrame = false, liveMonitorTimer = null;
+let lastHazardAlertKey = '', lastHazardAlertTime = 0, prevCenterThreat = null;
+let ocrWorker = null, ocrWorkerLang = '', ocrInitPromise = null;
+let segPipeline = null, segLoading = false, depthPipeline = null, depthLoading = false;
+let phonePitchBeta = null, savedOutfitColor = null;
+
+let barcodeDetector = null;
+try { if ('BarcodeDetector' in window) barcodeDetector = new window.BarcodeDetector({ formats: ['qr_code', 'ean_13', 'ean_8', 'upc_a', 'code_128', 'data_matrix'] }); } catch (e) {}
+let faceDetector = null;
+try { if ('FaceDetector' in window) faceDetector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 2 }); } catch (e) {}
+
+const MAX_DIM = 1024, TEXT_MAX_DIM = 1920, TIMEOUT_MS = 45000, STEP_METERS = 0.70;
+
+const LOCAL_OBJECT_MAP = Object.freeze({
+  'person':        { ar: 'شخص', priority: 3, h: 1.68, w: 0.48 },
+  'car':           { ar: 'سيارة', priority: 3, h: 1.48, w: 1.82 },
+  'bus':           { ar: 'حافلة', priority: 3, h: 3.00, w: 2.45 },
+  'truck':         { ar: 'شاحنة', priority: 3, h: 2.70, w: 2.35 },
+  'motorcycle':    { ar: 'دراجة نارية أو توك توك', priority: 3, h: 1.15, w: 0.85 },
+  'bicycle':       { ar: 'دراجة', priority: 3, h: 1.05, w: 0.60 },
+  'dog':           { ar: 'كلب', priority: 3, h: 0.55 },
+  'cat':           { ar: 'قطة', priority: 2, h: 0.28 },
+  'knife':         { ar: 'سكين', priority: 3, h: 0.24 },
+  'scissors':      { ar: 'مقص', priority: 3, h: 0.20 },
+  'fire hydrant':  { ar: 'عائق أرضي', priority: 2, h: 0.75 },
+  'stop sign':     { ar: 'لافتة طريق', priority: 2, h: 0.70 },
+  'traffic light': { ar: 'إشارة مرور', priority: 2, h: 0.80 },
+  'chair':         { ar: 'كرسي', priority: 2, h: 0.85 },
+  'couch':         { ar: 'أريكة', priority: 2, h: 0.85, w: 1.80 },
+  'dining table':  { ar: 'طاولة', priority: 2, h: 0.76, w: 1.20 },
+  'bed':           { ar: 'سرير', priority: 2, h: 0.65, w: 1.50 },
+  'bench':         { ar: 'مقعد ثابت', priority: 2, h: 0.80, w: 1.40 },
+  'toilet':        { ar: 'مرحاض', priority: 2, h: 0.75 },
+  'sink':          { ar: 'حوض', priority: 2, h: 0.85 },
+  'refrigerator':  { ar: 'ثلاجة', priority: 2, h: 1.75, w: 0.70 },
+  'oven':          { ar: 'بوتاجاز', priority: 2, h: 0.88, w: 0.65 },
+  'potted plant':  { ar: 'أصيص زرع', priority: 2, h: 0.70 },
+  'suitcase':      { ar: 'حقيبة سفر', priority: 2, h: 0.65 },
+  'backpack':      { ar: 'حقيبة', priority: 1, h: 0.45 },
+  'bottle':        { ar: 'زجاجة', priority: 1, h: 0.24 },
+  'cup':           { ar: 'كوب', priority: 1, h: 0.11 },
+  'cell phone':    { ar: 'هاتف', priority: 1, h: 0.15 },
+  'remote':        { ar: 'ريموت', priority: 1, h: 0.18 },
+  'laptop':        { ar: 'لابتوب', priority: 1, h: 0.25 },
+  'tv':            { ar: 'شاشة تلفاز', priority: 1, h: 0.65 },
+  'book':          { ar: 'كتاب', priority: 1, h: 0.23 }
+});
+
+const ADE20K_CRITICAL = {
+  'wall':       { ar: 'حائط قريب',    minPct: 0.52, priority: 3 },
+  'door':       { ar: 'باب',          minPct: 0.025, priority: 2 },
+  'windowpane': { ar: 'شباك أو زجاج', minPct: 0.025, priority: 2 },
+  'stairs':     { ar: 'سلالم',        minPct: 0.020, priority: 3 },
+  'stairway':   { ar: 'سلم',          minPct: 0.020, priority: 3 },
+  'step':       { ar: 'درجة سلم',     minPct: 0.015, priority: 3 },
+  'banister':   { ar: 'درابزين سلم',  minPct: 0.012, priority: 2 },
+  'railing':    { ar: 'حاجز',         minPct: 0.015, priority: 2 },
+  'water':      { ar: 'مياه',         minPct: 0.020, priority: 3 },
+  'sidewalk':   { ar: 'رصيف مشاة',    minPct: 0.045, priority: 1 },
+  'road':       { ar: 'طريق سيارات',  minPct: 0.055, priority: 3 },
+  'mirror':     { ar: 'مرآة',         minPct: 0.025, priority: 1 },
+  'pole':       { ar: 'عمود',         minPct: 0.012, priority: 3 }
+};
+
+const LIFE_MODES = {
+  walk: {
+    icon: '🛣️', title: 'فحص الطريق والسلالم والحفر',
+    prompt: `أنت عين أمينة لشخص كفيف يسير في مصر. افحص الطريق والأرض بدقة متناهية:
+1) السلالم والعتبات: حدد صراحة هل السلم **صاعد للأعلى** أم **نازل للأسفل**، وأين الدرابزين (يمين/يسار).
+2) الحفر والبالوعات المفتوحة وتكسّر الرصيف.
+3) السوائل الخطرة: برك المياه، الزيت، الطين، أو البلاط المبلل.
+4) الحوائط القريبة، الأبواب المغلقة أو الزجاجية الشفافة، الفروع والتندات المنخفضة.
+5) المركبات (سيارة، توك توك، موتوسيكل) والأشخاص والمسافة التقريبية بالخطوات (خطوة ≈ 70 سم). لا تقل أبداً أن الطريق آمن.`
+  },
+  home: {
+    icon: '🚪', title: 'الأبواب والشبابيك والغرفة',
+    prompt: `صف المكان الداخلي للكفيف بالموضع والمسافة بالخطوات:
+1) الأبواب والحوائط: هل يوجد باب أو حائط أمامه؟ هل الباب مفتوح بالكامل أم موارب أم مغلق؟ زجاجي أم خشبي؟ وأين المقبض؟
+2) الشبابيك والسلالم (صاعد أم نازل).
+3) مخاطر المنزل: ماء أو زيت مسكوب، زجاج مكسور، سكين، شعلة بوتاجاز، أسلاك.`
+  },
+  clothes: {
+    icon: '👔', title: 'فحص الملابس والألوان والبقع',
+    prompt: `ساعد شخصاً كفيفاً على الاطمئنان على ملابسه باستقلالية وكرامة: نوع القطعة، اللون الدقيق، النقشة، هل توجد بقعة طعام أو غبار أو تمزق أو تحتاج كيّ؟ وهل تليق القطع معاً؟`
+  },
+  grooming: {
+    icon: '💇', title: 'المرآة: الشعر والوجه والمظهر',
+    prompt: `أنت مرآة صادقة ومهذبة لشخص كفيف يتفقد مظهره: هل الشعر منسق أم متطاير من جهة؟ هل الحجاب مستوٍ؟ هل اللحية مرتبة؟ هل يوجد شيء عالق بالوجه أو النظارة أو ياقة القميص أو الأزرار؟`
+  }
+};
+
+const RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    risk_level: { type: 'string', enum: ['خطر ظاهر', 'يستلزم الحذر', 'لم يظهر خطر واضح في الصورة'] },
+    risk_summary: { type: 'string' },
+    hazards: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { category: { type: 'string' }, location: { type: 'string' }, distance_steps: { type: 'string' }, details: { type: 'string' } },
+        required: ['category', 'location', 'details']
+      }
+    },
+    scene_description: { type: 'string' },
+    request_answer: { type: 'string' },
+    uncertainty: { type: 'string' }
+  },
+  required: ['risk_level', 'risk_summary', 'hazards', 'scene_description', 'request_answer', 'uncertainty']
+};
+
+const settingsScreen = document.getElementById('settings-screen');
+const mainScreen = document.getElementById('main-screen');
+const settingsStatus = document.getElementById('settings-status');
+const sonarCalStatus = document.getElementById('sonar-cal-status');
+const proxyUrlInput = document.getElementById('proxy-url-input');
+const providerSelect = document.getElementById('provider-select');
+const apiKeyInput = document.getElementById('api-key-input');
+const modelInput = document.getElementById('model-input');
+const saveButton = document.getElementById('save-button');
+const rememberKeyCheckbox = document.getElementById('remember-key-checkbox');
+const ocrLangSelect = document.getElementById('ocr-lang-select');
+const preloadOcrBtn = document.getElementById('preload-ocr-btn');
+const loadSegformerBtn = document.getElementById('load-segformer-btn');
+const loadDepthBtn = document.getElementById('load-depth-btn');
+
+const touchExploreCheckbox = document.getElementById('touch-explore-checkbox');
+const liveLocalScanCheckbox = document.getElementById('live-local-scan-checkbox');
+const navModeCheckbox = document.getElementById('nav-mode-checkbox');
+const spatialAudioCheckbox = document.getElementById('spatial-audio-checkbox');
+const autoTorchCheckbox = document.getElementById('auto-torch-checkbox');
+
+const localScannerBadge = document.getElementById('local-scanner-badge');
+const segBadge = document.getElementById('seg-badge');
+const depthBadge = document.getElementById('depth-badge');
+const autoTorchBadge = document.getElementById('auto-torch-badge');
+const torchBadge = document.getElementById('torch-badge');
+const torchBtn = document.getElementById('torch-btn');
+const torchLabel = document.getElementById('torch-label');
+const navHint = document.getElementById('nav-hint');
+const statusText = document.getElementById('status-text');
+const riskIndicator = document.getElementById('risk-indicator');
+const videoElement = document.getElementById('camera-preview');
+const canvas = document.getElementById('canvas');
+const probeCanvas = document.getElementById('probe-canvas');
+const colorBtnLabel = document.getElementById('color-btn-label');
+
+function updateSonarCalStatusText() {
+  if (!sonarCalStatus) return;
+  sonarCalStatus.textContent = sonarCalibration
+    ? '✅ الهاتف معايَر في الفضاء المفتوح وجاهز لرصد الحوائط والأبواب بدقة عالية.'
+    : 'لم يُعاير بعد (يعمل تلقائياً الآن، ولكن المعايرة ترفع دقة المسافات القريبة أقل من نصف متر).';
+}
+updateSonarCalStatusText();
+
+function populateModelsForProvider() {
+  const p = providerSelect.value || 'gemini', models = PROVIDERS[p].models;
+  modelInput.innerHTML = '';
+  for (const [id, info] of Object.entries(models)) {
+    const o = document.createElement('option'); o.value = id; o.textContent = info.label; modelInput.appendChild(o);
+  }
+  modelInput.value = models[modelName] ? modelName : PROVIDERS[p].defaultModel;
+}
+function onProviderChange() { provider = providerSelect.value; populateModelsForProvider(); }
+providerSelect.value = provider; populateModelsForProvider(); proxyUrlInput.value = proxyUrl;
+ocrLangSelect.value = ocrLang;
+ocrLangSelect.addEventListener('change', () => {
+  ocrLang = ocrLangSelect.value === 'ara' ? 'ara' : 'ara+eng';
+  writeLS(LS_OCR_LANG, ocrLang); ocrWorker = null; ocrInitPromise = null;
+});
+touchExploreCheckbox.checked = touchExploreEnabled;
+touchExploreCheckbox.addEventListener('change', () => { touchExploreEnabled = touchExploreCheckbox.checked; writeLS(LS_EXPLORE, touchExploreEnabled); });
+liveLocalScanCheckbox.checked = localScanEnabled;
+liveLocalScanCheckbox.addEventListener('change', () => { localScanEnabled = liveLocalScanCheckbox.checked; writeLS(LS_LOCAL_SCAN, localScanEnabled); });
+navModeCheckbox.checked = navModeEnabled;
+navModeCheckbox.addEventListener('change', () => setNavMode(navModeCheckbox.checked, true));
+spatialAudioCheckbox.checked = spatialAudioEnabled;
+spatialAudioCheckbox.addEventListener('change', () => { spatialAudioEnabled = spatialAudioCheckbox.checked; writeLS(LS_SPATIAL, spatialAudioEnabled); });
+autoTorchCheckbox.checked = autoTorchEnabled;
+autoTorchCheckbox.addEventListener('change', () => { autoTorchEnabled = autoTorchCheckbox.checked; writeLS(LS_AUTO_TORCH, autoTorchEnabled); updateTorchUI(); });
+
+function initOrientationSensor() {
+  if (!window.DeviceOrientationEvent) return;
+  const attach = () => window.addEventListener('deviceorientation', ev => { if (typeof ev.beta === 'number') phonePitchBeta = ev.beta; }, { passive: true });
+  if (typeof DeviceOrientationEvent.requestPermission === 'function') DeviceOrientationEvent.requestPermission().then(s => { if (s === 'granted') attach(); }).catch(() => {});
+  else attach();
+}
+
+function pickArabicVoice() {
+  if (!('speechSynthesis' in window)) return;
+  const vs = window.speechSynthesis.getVoices() || [];
+  arabicVoice = vs.find(v => /^ar[-_]eg/i.test(v.lang)) || vs.find(v => /^ar/i.test(v.lang)) || null;
+}
+if ('speechSynthesis' in window) { pickArabicVoice(); window.speechSynthesis.onvoiceschanged = pickArabicVoice; }
+
+function splitArabicSentences(text) {
+  const clean = String(text || '').trim();
+  if (clean.length <= 190) return [clean];
+  const rawParts = clean.split(/(?<=[.،!؟\n])\s+/), chunks = [];
+  let buf = '';
+  for (const part of rawParts) {
+    if ((buf + ' ' + part).length > 190 && buf) { chunks.push(buf.trim()); buf = part; }
+    else buf = buf ? (buf + ' ' + part) : part;
+  }
+  if (buf) chunks.push(buf.trim());
+  return chunks.length ? chunks : [clean];
+}
+function clearSpeechWatchdog() { if (speechWatchdog) { clearTimeout(speechWatchdog); speechWatchdog = null; } }
+function speak(text, interrupt = true) {
+  if (!('speechSynthesis' in window) || !text) return;
+  try {
+    if (interrupt) { window.speechSynthesis.cancel(); clearSpeechWatchdog(); }
+    const chunks = splitArabicSentences(text);
+    assistantSpeaking = true;
+    clearSpeechWatchdog();
+    speechWatchdog = setTimeout(() => { assistantSpeaking = false; }, Math.min(45000, Math.max(4500, text.length * 105)));
+    chunks.forEach((chunk, idx) => {
+      const u = new SpeechSynthesisUtterance(chunk);
+      u.lang = arabicVoice ? arabicVoice.lang : 'ar-EG';
+      if (arabicVoice) u.voice = arabicVoice;
+      u.rate = 0.98; u.pitch = 1.0;
+      u.onstart = () => { assistantSpeaking = true; };
+      if (idx === chunks.length - 1) {
+        u.onend = () => { assistantSpeaking = false; clearSpeechWatchdog(); };
+        u.onerror = () => { assistantSpeaking = false; clearSpeechWatchdog(); };
+      }
+      window.speechSynthesis.speak(u);
+    });
+  } catch (e) { assistantSpeaking = false; clearSpeechWatchdog(); }
+}
+function stopSpeaking() { clearSpeechWatchdog(); if ('speechSynthesis' in window) window.speechSynthesis.cancel(); assistantSpeaking = false; }
+
+let audioContext = null;
+function ensureAudioContext() {
+  if (!audioContext) { try { audioContext = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } }
+  if (audioContext?.state === 'suspended') audioContext.resume().catch(() => {});
+  return audioContext;
+}
+function playSpatialBeep(side, urgent) {
+  if (!spatialAudioEnabled) return;
+  const ctx = ensureAudioContext(); if (!ctx) return;
+  try {
+    const osc = ctx.createOscillator(), g = ctx.createGain(), p = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    osc.type = urgent ? 'sawtooth' : 'sine'; osc.frequency.value = urgent ? 880 : 560;
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(urgent ? 0.22 : 0.12, ctx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + (urgent ? 0.24 : 0.14));
+    if (p) { p.pan.value = side === 'left' ? -0.92 : (side === 'right' ? 0.92 : 0); osc.connect(g); g.connect(p); p.connect(ctx.destination); }
+    else { osc.connect(g); g.connect(ctx.destination); }
+    osc.start(); osc.stop(ctx.currentTime + 0.26);
+  } catch (e) {}
+}
+function playAckTone() {
+  const ctx = ensureAudioContext(); if (!ctx) return;
+  try {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'triangle'; o.frequency.value = 540;
+    g.gain.setValueAtTime(0.001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.11, ctx.currentTime + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+    o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.09);
+  } catch (e) {}
+}
+function vibrate(p) { try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) {} }
+// أرقام المعايرة التشخيصية تظهر فقط في وضع المطوّر (?dev=1) كي لا يقرأها قارئ الشاشة للمستخدم الكفيف.
+const DEV_MODE = (() => { try { return new URLSearchParams(location.search).get('dev') === '1'; } catch (e) { return false; } })();
+function updateStatus(t) { statusText.innerText = t; }
+function updateDebug(t) { if (DEV_MODE) statusText.innerText = t; }
+function updateRiskIndicator(level) {
+  riskIndicator.className = 'border rounded-xl px-3 py-1 text-xs';
+  riskIndicator.classList.remove('hidden', 'risk-danger', 'risk-caution', 'risk-none', 'risk-unknown');
+  if (level === 'خطر ظاهر') { riskIndicator.classList.add('risk-danger'); riskIndicator.innerText = 'تحذير: موضع يستلزم الحذر الشديد'; }
+  else if (level === 'يستلزم الحذر') { riskIndicator.classList.add('risk-caution'); riskIndicator.innerText = 'انتبه: الصورة لا تكفي للحكم بأمان الطريق'; }
+  else if (level === 'لم يظهر خطر واضح في الصورة') { riskIndicator.classList.add('risk-none'); riskIndicator.innerText = 'لم يُرصد عائق معروف؛ استعن بعصاك دائماً'; }
+  else { riskIndicator.classList.add('risk-unknown'); riskIndicator.innerText = 'تعذر التحقق؛ تأكد بعصاك قبل التقدم'; }
+}
+function hideRiskIndicator() { riskIndicator.classList.add('hidden'); riskIndicator.innerText = ''; }
+
+let lastExploreEl = null, lastExploreTime = 0;
+mainScreen.addEventListener('pointermove', ev => {
+  if (!touchExploreEnabled || ev.buttons === 0) return;
+  const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('[data-speak-label]');
+  if (el && (el !== lastExploreEl || Date.now() - lastExploreTime > 2400)) {
+    lastExploreEl = el; lastExploreTime = Date.now();
+    vibrate(18); speak(el.getAttribute('data-speak-label'), true);
+  }
+});
+
+function setLifeMode(mode, silent = false) {
+  if (!LIFE_MODES[mode]) return;
+  lifeMode = mode; writeLS(LS_LIFE_MODE, mode);
+  for (const m of ['walk', 'home', 'clothes', 'grooming']) {
+    const b = document.getElementById('mode-' + m);
+    if (b) b.setAttribute('aria-pressed', String(m === mode));
+  }
+  const info = LIFE_MODES[mode];
+  document.getElementById('mode-hero-icon').textContent = info.icon;
+  document.getElementById('mode-hero-title').textContent = info.title;
+  if (colorBtnLabel) colorBtnLabel.textContent = mode === 'clothes' ? (savedOutfitColor ? 'طابق الطقم' : 'فحص وبقع') : 'اللون والطقم';
+  const targetFacing = mode === 'grooming' ? 'user' : 'environment';
+  if (facingMode !== targetFacing && !mainScreen.classList.contains('hidden')) switchCameraFacing(targetFacing, true);
+  if (!silent) { const m = 'وضع: ' + info.title; updateStatus(m); speak(m); }
+}
+
+async function startCamera() {
+  if (videoStream) return;
+  if (!navigator.mediaDevices?.getUserMedia) { updateStatus('الكاميرا تحتاج رابط HTTPS.'); speak('الكاميرا غير متاحة'); return; }
+  try {
+    videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 }, focusMode: { ideal: 'continuous' } }, audio: false });
+  } catch (e1) {
+    try { videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); }
+    catch (e2) { updateStatus('امنح إذن الكاميرا من المتصفح.'); speak('تعذر الوصول إلى الكاميرا'); return; }
+  }
+  videoElement.srcObject = videoStream;
+  videoElement.classList.toggle('mirror', facingMode === 'user');
+  try { await videoElement.play(); } catch (e) {}
+  detectTorchSupport();
+}
+function stopCamera() { torchOn = false; torchAutoActivated = false; updateTorchUI(); if (videoStream) { videoStream.getTracks().forEach(t => t.stop()); videoStream = null; } videoElement.srcObject = null; }
+async function switchCameraFacing(target, silent = false) { facingMode = target; torchManualOverride = false; stopCamera(); await startCamera(); if (!silent) speak(facingMode === 'user' ? 'الكاميرا الأمامية للمرآة نشطة.' : 'الكاميرا الخلفية نشطة.'); }
+
+function detectTorchSupport() { torchSupported = false; torchOn = false; torchAutoActivated = false; try { torchSupported = !!videoStream?.getVideoTracks()[0]?.getCapabilities?.().torch; } catch (e) {} if (torchBtn) torchBtn.style.opacity = torchSupported ? '1' : '0.45'; updateTorchUI(); }
+function updateTorchUI() {
+  if (torchLabel) torchLabel.textContent = torchOn ? 'إطفاء' : 'الكشاف';
+  if (torchBadge) torchBadge.classList.toggle('hidden', !torchOn);
+  if (autoTorchBadge) autoTorchBadge.classList.toggle('hidden', !(autoTorchEnabled && torchSupported));
+}
+async function applyTorch(state, silent = false, isAuto = false) {
+  if (!videoStream || !torchSupported) return false;
+  try { await videoStream.getVideoTracks()[0].applyConstraints({ advanced: [{ torch: !!state }] }); torchOn = !!state; torchAutoActivated = torchOn ? isAuto : false; updateTorchUI(); if (!silent) speak(torchOn ? 'تم تشغيل الكشاف.' : 'تم إطفاء الكشاف.'); return true; }
+  catch (e) { return false; }
+}
+async function toggleTorch() { if (!torchSupported) { const m = 'الكشاف غير مدعوم هنا.'; updateStatus(m); speak(m); return; } torchManualOverride = true; await applyTorch(!torchOn, false, false); }
+
+function probeFrameQuality() {
+  const vw = videoElement.videoWidth, vh = videoElement.videoHeight;
+  if (!vw || !vh) return null;
+  const ctx = probeCanvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(videoElement, 0, 0, 160, 120);
+  const d = ctx.getImageData(0, 0, 160, 120).data, lum = new Float32Array(160 * 120);
+  let sumY = 0, sumR = 0, sumG = 0, sumB = 0, edgeSum = 0;
+  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    const r = d[i], g = d[i + 1], b = d[i + 2], y = 0.299 * r + 0.587 * g + 0.114 * b;
+    lum[p] = y; sumY += y; sumR += r; sumG += g; sumB += b;
+  }
+  for (let y = 1; y < 119; y++) for (let x = 1; x < 159; x++) {
+    const idx = y * 160 + x; edgeSum += Math.abs(lum[idx] - lum[idx - 1]) + Math.abs(lum[idx] - lum[idx - 160]);
+  }
+  const totalPx = 160 * 120, meanY = sumY / totalPx, meanR = sumR / totalPx, meanG = sumG / totalPx, meanB = sumB / totalPx;
+  const sharpness = edgeSum / (158 * 118);
+  const isFingerSkinCover = (meanY < 90 && sharpness < 2.4 && meanR > meanG * 1.65 && meanR > meanB * 1.85);
+  const isBlockedDark = (meanY < 10 && sharpness < 1.2 && torchOn);
+  const isLensCovered = isFingerSkinCover || isBlockedDark;
+  let lightLabel = 'إضاءة جيدة';
+  if (isFingerSkinCover) lightLabel = 'العدسة مغطاة بإصبعك';
+  else if (meanY < 16) lightLabel = 'مظلم تماماً أو العدسة مغطاة';
+  else if (meanY < 52) lightLabel = 'إضاءة خافتة';
+  else if (meanY > 228) lightLabel = 'إضاءة ساطعة جداً';
+  return { meanY, sharpness, lightLabel, isVeryDark: meanY < 16, isDim: meanY < 52, isFlat: sharpness < 3.6, isLensCovered, lum };
+}
+
+async function evaluateContinuousAutoTorch(q) {
+  if (!q || facingMode !== 'environment' || !torchSupported || isProcessing) return;
+  const now = Date.now();
+  if (q.isLensCovered) {
+    darkStreak = 0;
+    if (torchOn && torchAutoActivated) await applyTorch(false, true, false);
+    if (now - lastLensWarnTime > 15000 && !assistantSpeaking) { lastLensWarnTime = now; speak('يبدو أن إصبعك أو شيئاً يغطي عدسة الكاميرا.', false); }
+    return;
+  }
+  if (!autoTorchEnabled || torchManualOverride) return;
+  if (!torchOn) {
+    if (q.meanY < 28) { darkStreak++; brightStreak = 0; if (darkStreak >= 2) { darkStreak = 0; if (await applyTorch(true, true, true)) speak('المكان مظلم؛ شغّلت الكشاف تلقائياً.', false); } }
+    else darkStreak = 0;
+  } else if (torchAutoActivated) {
+    if (q.meanY > 172) { brightStreak++; darkStreak = 0; if (brightStreak >= 4) { brightStreak = 0; await applyTorch(false, true, false); } }
+    else brightStreak = 0;
+  }
+}
+
+async function withAutoTorchForCapture(fn) {
+  const q0 = probeFrameQuality();
+  if (q0?.isLensCovered) { const m = 'يبدو أن إصبعك يغطي عدسة الكاميرا؛ أبعد يدك وأعد المحاولة.'; updateStatus(m); speak(m); return; }
+  let tempActivated = false;
+  if (q0 && q0.isDim && autoTorchEnabled && torchSupported && !torchOn && facingMode === 'environment') {
+    if (await applyTorch(true, true, false)) { tempActivated = true; await new Promise(r => setTimeout(r, 460)); }
+  }
+  try { await fn(probeFrameQuality()); }
+  finally { if (tempActivated) await applyTorch(false, true, false); }
+}
+
+/* ============================================================================
+   وطواط الظلام المدقّق (V20.2):
+   - قفل موحد على النبضات m = 0..4 (يمنع انزياح الإطار)
+   - تمديد التسجيل +420ms لالتقاط كل النبضات على أجهزة أندرويد البطيئة
+   - كاشف SO-CFAR (أصغر الخلفيتين) + صعود حقيقي فوق ما قبل القمة >= 1.65x
+============================================================================ */
+/* ============================================================================
+   حارس مسار الصوت للوطواط (V20.9): الوطواط يحتاج أن يخرج الصوت من مكبر الهاتف ليلتقط ميكروفونه الصدى.
+   - سماعة أذن (سلكية/بلوتوث/USB) ← منع.
+   - لا دليل إيجابي على أن المسار هو مكبر الهاتف ← يعمل مع تنبيه صوتي في النتيجة (قرار المستخدم، V20.10).
+   - تغيّر الأجهزة أثناء الفحص ← إلغاء النتيجة.
+   تنبيه صريح: المتصفح لا يضمن معرفة مسار الإخراج الفعلي على كل هاتف؛ هذا الحارس يمنع ما يستطيع إثباته،
+   وينبّه عند الشك. الضمان الكامل يحتاج طبقة أندرويد أصلية (مرحلة لاحقة).
+============================================================================ */
+const HEADSET_RE = /head(?:set|phone)|ear(?:phone|bud|pod)|airpod|\bbuds?\b|bluetooth|hands-?free|a2dp|\bsco\b|wired|usb[\s-]*(?:head|audio)|line[\s-]?out|سماع|بلوتوث/i;
+const BUILTIN_RE = /speakerphone|built-?in|internal|microphone array|مكبر|الهاتف/i;
+class BatRouteError extends Error { constructor(kind) { super('bat route ' + kind); this.name = 'BatRouteError'; this.kind = kind; } }
+let batRouteChanged = false;
+function classifyAudioRoute(info) {
+  const all = [info && info.trackLabel].concat((info && info.labels) || []).map(x => String(x || '').trim()).filter(Boolean);
+  const hit = all.find(l => HEADSET_RE.test(l));
+  if (hit) return { state: 'headset', why: hit };
+  if (info && info.sinkId && info.sinkId !== 'default') return { state: 'unknown', why: 'sink:' + info.sinkId };
+  const b = all.find(l => BUILTIN_RE.test(l));
+  if (b) return { state: 'builtin', why: b };
+  return { state: 'unknown', why: all.join(' | ') || 'لا أسماء أجهزة' };
+}
+async function readAudioRouteInfo(micStream, ctx) {
+  let labels = [];
+  try { labels = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput' || d.kind === 'audiooutput').map(d => d.label); } catch (e) {}
+  const t = micStream && micStream.getAudioTracks ? micStream.getAudioTracks()[0] : null;
+  let sink = ''; try { sink = typeof ctx.sinkId === 'string' ? ctx.sinkId : (ctx.sinkId ? 'object' : ''); } catch (e) {}
+  return { trackLabel: t && t.label, labels, sinkId: sink };
+}
+function batUnverifiedNote(state) {
+  return state === 'unknown' ? ' تنبيه: لم أستطع التأكد أن الصوت يخرج من مكبر الهاتف. إن كانت سماعة أذن موصولة فهذه النتيجة غير صالحة، فافصلها وأعد المحاولة.' : '';
+}
+function batRouteMessage(kind) {
+  if (kind === 'headset') return 'تم منع تشغيل وطواط الظلام لأن الهاتف متصل بسماعة أذن. يحتاج الوطواط إلى مكبر الهاتف حتى يلتقط الميكروفون صدى الصوت. افصل السماعة ثم أعد المحاولة.';
+  if (kind === 'changed') return 'تغيّر جهاز الصوت أثناء الفحص، فألغيت النتيجة. أعد المحاولة بعد استقرار الاتصال.';
+  return 'تم منع تشغيل وطواط الظلام لأنني لا أستطيع التأكد أن الصوت يخرج من مكبر الهاتف نفسه. افصل أي سماعة أو جهاز صوت خارجي ثم أعد المحاولة، واستعن بعصاك.';
+}
+function reportBatRouteBlock(e, settings) {
+  const m = batRouteMessage(e.kind);
+  vibrate([120, 80, 120, 80, 120]);
+  if (settings) updateSettingsStatus(m, true); else { updateRiskIndicator('تعذر التحقق'); updateStatus(m); speak(m); }
+}
+async function captureSonarEnvelopeProfile() {
+  const ctx = ensureAudioContext();
+  if (!ctx) throw new Error('تعذر تهيئة الصوت.');
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error('الميكروفون غير متاح هنا.');
+
+  let micStream = null, srcNode = null, procNode = null, muteGain = null;
+  const onDeviceChange = () => { batRouteChanged = true; };
+  let routeState = 'unknown';
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 },
+      video: false
+    });
+    // الحارس: قبل إصدار أي نبضة. المنع هنا يشمل الفحص والمعايرة معاً لأنهما يمران من هذه الدالة.
+    batRouteChanged = false;
+    try { navigator.mediaDevices.addEventListener('devicechange', onDeviceChange); } catch (e) {}
+    const route = classifyAudioRoute(await readAudioRouteInfo(micStream, ctx));
+    updateDebug('(مسار الصوت) ' + route.state + ' — ' + route.why);
+    if (route.state === 'headset') throw new BatRouteError('headset');
+    routeState = route.state; // 'builtin' أو 'unknown' (السماعة المؤكدة منعت أعلاه)
+    const audioTrack = micStream.getAudioTracks()[0];
+    const trackSettings = audioTrack?.getSettings ? audioTrack.getSettings() : {};
+    const aecForcedOn = trackSettings.echoCancellation === true;
+
+    const fs = ctx.sampleRate || 48000;
+    const chirpDur = 0.0045;
+    const chirpLen = Math.max(64, Math.round(fs * chirpDur));
+    const chirpI = new Float32Array(chirpLen);
+    const chirpQ = new Float32Array(chirpLen);
+    const f0 = 3000, f1 = 9000;
+
+    let normEnergy = 0;
+    for (let i = 0; i < chirpLen; i++) {
+      const t = i / fs;
+      const win = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (chirpLen - 1)));
+      const phase = 2 * Math.PI * (f0 * t + ((f1 - f0) / (2 * chirpDur)) * t * t);
+      chirpI[i] = Math.cos(phase) * win;
+      chirpQ[i] = Math.sin(phase) * win;
+      normEnergy += win * win;
+    }
+    const normScale = 1 / Math.sqrt(Math.max(1e-6, normEnergy));
+
+    const emitCount = 5;
+    const periodSamples = Math.round(0.110 * fs);
+    const leadSamples = Math.round(0.060 * fs);
+    const tailSamples = Math.round(0.100 * fs);
+    const playLen = leadSamples + emitCount * periodSamples + tailSamples;
+    const playBuf = ctx.createBuffer(1, playLen, fs);
+    const playData = playBuf.getChannelData(0);
+    for (let m = 0; m < emitCount; m++) {
+      const start = leadSamples + m * periodSamples;
+      for (let i = 0; i < chirpLen; i++) playData[start + i] = chirpI[i] * 0.64;
+    }
+
+    const recordedChunks = [];
+    srcNode = ctx.createMediaStreamSource(micStream);
+    procNode = ctx.createScriptProcessor(1024, 1, 1);
+    muteGain = ctx.createGain();
+    muteGain.gain.value = 0;
+    procNode.onaudioprocess = ev => { recordedChunks.push(new Float32Array(ev.inputBuffer.getChannelData(0))); };
+    srcNode.connect(procNode);
+    procNode.connect(muteGain);
+    muteGain.connect(ctx.destination);
+
+    await new Promise(r => setTimeout(r, 90));
+    if (batRouteChanged) throw new BatRouteError('changed');
+    const bSrc = ctx.createBufferSource();
+    bSrc.buffer = playBuf;
+    bSrc.connect(ctx.destination);
+    bSrc.start(ctx.currentTime + 0.03);
+
+    // هامش +420ms حتى لا تنقطع النبضة الرابعة على هواتف أندرويد عالية الكمون
+    const waitMs = Math.round(((playLen / fs) * 1000) + 420);
+    await new Promise(r => setTimeout(r, waitMs));
+    if (batRouteChanged) throw new BatRouteError('changed');
+
+    const totalLen = recordedChunks.reduce((a, c) => a + c.length, 0);
+    const rec = new Float32Array(totalLen);
+    let off = 0;
+    for (const c of recordedChunks) { rec.set(c, off); off += c.length; }
+
+    let meanRec = 0;
+    for (let i = 0; i < totalLen; i++) meanRec += rec[i];
+    meanRec /= Math.max(1, totalLen);
+    for (let i = 0; i < totalLen; i++) rec[i] -= meanRec;
+
+    const cSound = 346.0;
+    const maxLag = Math.min(Math.round((2 * 3.4 / cSound) * fs), periodSamples - chirpLen - 120);
+    const maxStart = totalLen - (emitCount - 1) * periodSamples - chirpLen - maxLag;
+    if (maxStart < 20) throw new Error('التسجيل قصير جداً.');
+
+    const corrAt = (pos) => {
+      if (pos < 0 || pos + chirpLen > totalLen) return 0;
+      let sI = 0, sQ = 0;
+      for (let j = 0; j < chirpLen; j++) {
+        const x = rec[pos + j];
+        sI += x * chirpI[j];
+        sQ += x * chirpQ[j];
+      }
+      return Math.hypot(sI, sQ) * normScale;
+    };
+
+    // قفل موحد على النبضات m = 0..4 حتى لا تنزاح نافذة القياس دورة كاملة
+    let bestT0 = 0, bestStack = -1;
+    for (let t = 0; t < maxStart; t += 4) {
+      let sum = 0;
+      for (let m = 0; m < emitCount; m++) sum += corrAt(t + m * periodSamples);
+      if (sum > bestStack) { bestStack = sum; bestT0 = t; }
+    }
+    let fineT0 = bestT0, fineBest = -1;
+    for (let t = Math.max(0, bestT0 - 8); t <= Math.min(maxStart - 1, bestT0 + 8); t++) {
+      let sum = 0;
+      for (let m = 0; m < emitCount; m++) sum += corrAt(t + m * periodSamples);
+      if (sum > fineBest) { fineBest = sum; fineT0 = t; }
+    }
+
+    const pulseIndices = [1, 2, 3, 4];
+    const envelopes = [], directPeaks = [];
+
+    for (const m of pulseIndices) {
+      const base = fineT0 + m * periodSamples;
+      let pkOffset = 0, pkVal = 0;
+      for (let k = -24; k <= 24; k++) {
+        const val = corrAt(base + k);
+        if (val > pkVal) { pkVal = val; pkOffset = k; }
+      }
+      directPeaks.push(pkVal);
+      const exactStart = base + pkOffset;
+      const env = new Float32Array(maxLag + 1);
+      for (let lag = 0; lag <= maxLag; lag++) env[lag] = corrAt(exactStart + lag);
+      envelopes.push(env);
+    }
+
+    const medEnv = new Float32Array(maxLag + 1);
+    for (let lag = 0; lag <= maxLag; lag++) {
+      const vals = [envelopes[0][lag], envelopes[1][lag], envelopes[2][lag], envelopes[3][lag]].sort((a, b) => a - b);
+      medEnv[lag] = 0.5 * (vals[1] + vals[2]);
+    }
+    const directPeakMed = directPeaks.slice().sort((a, b) => a - b)[1] || 0;
+
+    const noiseStart = Math.round((2 * 2.50 / cSound) * fs);
+    const noiseEnd = Math.min(maxLag, Math.round((2 * 3.30 / cSound) * fs));
+    const tailVals = [];
+    for (let lag = noiseStart; lag <= noiseEnd; lag++) tailVals.push(medEnv[lag]);
+    tailVals.sort((a, b) => a - b);
+    const noiseFloor = Math.max(1e-6, tailVals[Math.floor(tailVals.length * 0.45)] || 1e-6);
+
+    const directSnr = directPeakMed / noiseFloor;
+    return { fs, cSound, maxLag, directPeakMed, noiseFloor, directSnr, aecForcedOn, medEnv, envelopes, routeState };
+  } finally {
+    try { navigator.mediaDevices.removeEventListener('devicechange', onDeviceChange); } catch (e) {}
+    try { if (procNode) procNode.disconnect(); } catch (e) {}
+    try { if (srcNode) srcNode.disconnect(); } catch (e) {}
+    try { if (muteGain) muteGain.disconnect(); } catch (e) {}
+    try { if (micStream) micStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+  }
+}
+
+async function calibrateBatSonarOpenAir() {
+  if (isProcessing) return;
+  isProcessing = true;
+  const btn = document.getElementById('calibrate-sonar-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'جارٍ التسجيل... اصمت ثانية'; }
+  updateSettingsStatus('جارٍ تسجيل بصمة هاتفك في الفضاء المفتوح...', true);
+  try {
+    const res = await captureSonarEnvelopeProfile();
+    if (res.directSnr < 4.5) {
+      updateSettingsStatus('فشلت المعايرة: افصل سماعة الأذن وارفع صوت الوسائط قليلاً وأعد المحاولة.', true);
+      return;
+    }
+    const ratios = [];
+    for (let k = 0; k <= res.maxLag; k += 2) ratios.push(Number((res.medEnv[k] / Math.max(1e-6, res.directPeakMed)).toFixed(5)));
+    sonarCalibration = { fs: res.fs, step: 2, ratios, directSnr: res.directSnr, route: res.routeState };
+    writeLS(LS_SONAR_CAL, JSON.stringify(sonarCalibration));
+    updateSonarCalStatusText();
+    updateSettingsStatus('تمت معايرة وطواط الظلام بنجاح لهاتفك!' + (res.routeState === 'unknown' ? ' تنبيه: لم أستطع التأكد أن الصوت خرج من مكبر الهاتف؛ إن كانت سماعة أذن موصولة فأعد المعايرة بعد فصلها.' : ''), true);
+  } catch (e) {
+    if (e instanceof BatRouteError) reportBatRouteBlock(e, true);
+    else updateSettingsStatus('تعذرت المعايرة: تأكد من منح إذن الميكروفون.', true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🦇 عاير الهاتف في فضاء مفتوح'; }
+    isProcessing = false;
+  }
+}
+
+function clearSonarCalibration() {
+  sonarCalibration = null;
+  try { localStorage.removeItem(LS_SONAR_CAL); } catch (e) {}
+  updateSonarCalStatusText();
+  updateSettingsStatus('تم مسح معايرة الوطواط.', true);
+}
+
+function checkCloseVisualWallFallback(q) {
+  if (!q || q.isVeryDark || q.isLensCovered) return null;
+  if (q.sharpness < 4.6 && q.meanY > 25 && q.meanY < 235) {
+    return 'المشهد البصري أمام الكاميرا مسطح جداً ومنخفض التفاصيل؛ قد تكون ملاصقاً لحائط أو باب مغلق.';
+  }
+  return null;
+}
+
+async function runBatSonarProbe() {
+  if (isProcessing) { updateStatus('انتظر انتهاء الطلب الحالي.'); return; }
+  isProcessing = true; hideRiskIndicator(); vibrate(40);
+  stopSpeaking();
+  updateStatus('جارٍ فحص الصدى بوطواط الظلام... اصمت ثانية.');
+  try {
+    const res = await captureSonarEnvelopeProfile();
+    const { fs, cSound, maxLag, directPeakMed, noiseFloor, directSnr, aecForcedOn, medEnv, envelopes, routeState } = res;
+
+    if (directSnr < 4.5) {
+      const m = aecForcedOn
+        ? 'هذا الهاتف يفرض كتم الصدى على الميكروفون؛ اعتمد على الكشاف والعصا البيضاء.'
+        : 'لم يصل صوت الاختبار للميكروفون بوضوح. افصل سماعة الأذن وارفع صوت الوسائط 70% ثم أعد الفحص.';
+      updateStatus(m); speak(m); return;
+    }
+
+    const env = new Float32Array(medEnv.length);
+    for (let i = 1; i < medEnv.length - 1; i++) env[i] = (medEnv[i - 1] + medEnv[i] + medEnv[i + 1]) / 3;
+
+    const calMatch = sonarCalibration && sonarCalibration.fs === fs && Array.isArray(sonarCalibration.ratios);
+    const minDistM = calMatch ? 0.25 : 0.38;
+    const maxDistM = 2.75;
+    const minLag = Math.max(18, Math.round((2 * minDistM / cSound) * fs));
+    const maxSearchLag = Math.min(maxLag - 20, Math.round((2 * maxDistM / cSound) * fs));
+
+    const guard = 12, train = 34;
+    const candidates = [];
+
+    for (let k = minLag; k <= maxSearchLag; k++) {
+      // 1) قمة محلية صاعدة فعلاً (لا تقبل المنحدرات الهابطة من رنين السماعة!)
+      let isPeak = true;
+      for (let d = -5; d <= 5; d++) {
+        if (d !== 0 && env[k + d] > env[k]) { isPeak = false; break; }
+      }
+      if (!isPeak) continue;
+      if (env[k] < noiseFloor * 3.0) continue;
+
+      // 2) SO-CFAR: قياس الخلفية قبل وبعد، مع منع تلوّث الخلفية بذيل الحائط العريض!
+      const leftSamples = [], rightSamples = [];
+      for (let i = Math.max(minLag, k - guard - train); i < k - guard; i++) leftSamples.push(env[i]);
+      for (let i = k + guard + 1; i <= Math.min(maxLag, k + guard + train); i++) rightSamples.push(env[i]);
+      leftSamples.sort((a, b) => a - b); rightSamples.sort((a, b) => a - b);
+
+      const leftMed = leftSamples.length ? leftSamples[Math.floor(leftSamples.length * 0.5)] : 0;
+      const rightMed = rightSamples.length ? rightSamples[Math.floor(rightSamples.length * 0.5)] : 0;
+      const smallestBg = (leftMed > 0 && rightMed > 0) ? Math.min(leftMed, rightMed) : (leftMed || rightMed || noiseFloor);
+
+      // يجب أن تصعد القمة فوق ما قبلها فعلاً (يمنع التقاط المنحدرات) وتتجاوز أصغر الخلفيتين بـ SO-CFAR
+      const risesBefore = leftMed === 0 || env[k] >= leftMed * 1.65;
+      const soCfarRatio = env[k] / Math.max(1e-6, smallestBg);
+
+      let calRatio = 1.0;
+      if (calMatch) {
+        const ci = Math.min(sonarCalibration.ratios.length - 1, Math.floor(k / (sonarCalibration.step || 2)));
+        const expectedSelf = (sonarCalibration.ratios[ci] || 0.0001) * directPeakMed;
+        calRatio = env[k] / Math.max(noiseFloor * 1.4, expectedSelf);
+      }
+
+      // تكرار عبر 3 نبضات من أصل 4 مستقلة
+      let pulseHits = 0;
+      const pulseThresh = Math.max(noiseFloor * 2.4, smallestBg * 1.55);
+      for (const eArr of envelopes) {
+        let pMax = 0;
+        for (let d = -4; d <= 4; d++) if (eArr[k + d] > pMax) pMax = eArr[k + d];
+        if (pMax >= pulseThresh) pulseHits++;
+      }
+
+      const cfarAccepted = risesBefore && soCfarRatio >= 2.05 && pulseHits >= 3;
+      const calAccepted = calMatch && risesBefore && calRatio >= 2.05 && pulseHits >= 3;
+
+      if (cfarAccepted || calAccepted) {
+        const distM = ((k / fs) * cSound) / 2;
+        const score = (soCfarRatio + (calMatch ? calRatio : 0)) * (env[k] / noiseFloor);
+        candidates.push({ k, distM, soCfarRatio, calRatio, score });
+      }
+    }
+
+    candidates.sort((a, b) => a.distM - b.distM);
+    let bestWall = null;
+    if (candidates.length) {
+      bestWall = candidates[0];
+      for (let i = 1; i < candidates.length; i++) {
+        if (candidates[i].distM - bestWall.distM < 0.22 && candidates[i].score > bestWall.score) bestWall = candidates[i];
+      }
+    }
+
+    const q = probeFrameQuality();
+    const visualWallHint = checkCloseVisualWallFallback(q);
+
+    let msg;
+    if (bestWall) {
+      const distRounded = Math.round(bestWall.distM * 10) / 10;
+      const steps = Math.max(1, Math.round(bestWall.distM / STEP_METERS));
+      const veryClose = distRounded <= 1.0;
+      playSpatialBeep('center', veryClose);
+      vibrate(veryClose ? [110, 50, 110, 50, 110] : [55, 40, 55]);
+      updateRiskIndicator(veryClose ? 'خطر ظاهر' : 'يستلزم الحذر');
+      msg = 'انتبه! يُحتمل وجود حائط أو جسم صلب على بُعد نحو ' + distRounded + ' متر (نحو ' + steps + (steps <= 10 ? ' خطوات' : ' خطوة') + ') أمامك.';
+    } else if (visualWallHint) {
+      updateRiskIndicator('يستلزم الحذر');
+      vibrate([60, 40, 60]);
+      msg = visualWallHint + ' تحسس بالعصا أو اليد قبل التقدم.';
+    } else {
+      updateRiskIndicator('تعذر التحقق');
+      msg = 'لم أتمكن من رصد جسم صلب أمامك بالصوت، وهذا لا يعني أن الطريق خالٍ؛ فالأسطح الناعمة والزوايا والسلالم والحفر لا يكشفها هذا الفحص. ' +
+        (aecForcedOn ? 'تنبيه: يبدو أن هاتفك يفعّل كتم الصدى على الميكروفون تلقائياً. ' : '') +
+        (!calMatch ? 'جرّب «معايرة الفضاء المفتوح» من الإعدادات لتحسين الكشف. ' : '') +
+        'استعن بعصاك دائماً.';
+    }
+    msg += batUnverifiedNote(routeState);
+    lastDescription = msg; updateStatus(msg); speak(msg);
+  } catch (e) {
+    if (e instanceof BatRouteError) { reportBatRouteBlock(e, false); return; }
+    const m = 'تعذر تشغيل وطواط الظلام. تأكد من منح إذن الميكروفون.';
+    updateStatus(m); speak(m);
+  } finally { isProcessing = false; }
+}
+
+async function checkSelfieFramingLocally(q) {
+  if (q?.isLensCovered) return { ready: false, hint: 'إصبعك يغطي الكاميرا الأمامية.' };
+  if (q?.isVeryDark) return { ready: false, hint: 'الإضاءة على وجهك ضعيفة جداً؛ اتجه نحو نافذة أو نور الغرفة.' };
+  if (faceDetector && videoElement.videoWidth > 0) {
+    try {
+      const faces = await faceDetector.detect(videoElement);
+      if (!faces?.length) return { ready: false, hint: 'لا يظهر وجهك في الإطار؛ حرّك الهاتف أمام وجهك على بُعد ذراع.' };
+      const b = faces[0].boundingBox, vw = videoElement.videoWidth, vh = videoElement.videoHeight, cx = (b.x + b.width / 2) / vw;
+      if (cx < 0.30) return { ready: false, hint: 'حرّك الهاتف قليلاً لليسار ليتوسط وجهك.' };
+      if (cx > 0.70) return { ready: false, hint: 'حرّك الهاتف قليلاً لليمين ليتوسط وجهك.' };
+      if (b.y < vh * 0.08) return { ready: false, hint: 'ارفع الهاتف أو أبعده قليلاً ليظهر شعرك كاملاً.' };
+      if (b.height > vh * 0.68) return { ready: false, hint: 'أبعد الهاتف قليلاً عن وجهك.' };
+      return { ready: true, hint: 'وجهك وشعرك في المنتصف تماماً.' };
+    } catch (e) {}
+  }
+  if (objectModel && videoElement.videoWidth > 0) {
+    try {
+      const person = (await objectModel.detect(videoElement, 3, 0.45))?.find(p => p.class === 'person');
+      if (!person) return { ready: false, hint: 'أمسك الهاتف أمام وجهك على بُعد ذراع ليرى شعرك.' };
+      const [bx, by, bw] = person.bbox, vw = videoElement.videoWidth, cx = (bx + bw / 2) / vw;
+      if (cx < 0.28) return { ready: false, hint: 'حرّك الهاتف قليلاً لليسار.' };
+      if (cx > 0.72) return { ready: false, hint: 'حرّك الهاتف قليلاً لليمين.' };
+      if (by < videoElement.videoHeight * 0.04) return { ready: false, hint: 'ارفع الهاتف قليلاً ليظهر أعلى الرأس والشعر.' };
+      return { ready: true, hint: 'الإطار مناسب لملامحك وشعرك.' };
+    } catch (e) {}
+  }
+  return { ready: true, hint: '' };
+}
+
+function classifyPixelColor(r, g, b) {
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min, v = max / 255, s = max === 0 ? 0 : d / max;
+  if (v < 0.14) return 'أسود أو داكن جداً';
+  if (s < 0.14) return v > 0.85 ? 'أبيض أو فاتح جداً' : (v > 0.55 ? 'رمادي فاتح' : 'رمادي غامق');
+  let h = max === r ? ((g - b) / d) % 6 : (max === g ? (b - r) / d + 2 : (r - g) / d + 4);
+  h = (h * 60 + 360) % 360;
+  if (h < 12 || h >= 345) return v < 0.45 ? 'نبيتي أو أحمر غامق' : 'أحمر';
+  if (h < 32) return (v < 0.58 && s < 0.72) ? 'بني' : 'برتقالي';
+  if (h < 58) return (v > 0.75 && s < 0.45) ? 'بيج أو كريمي' : 'أصفر أو ذهبي';
+  if (h < 90) return v < 0.52 ? 'زيتوني' : 'أخضر فاتح';
+  if (h < 165) return v < 0.42 ? 'أخضر غامق' : 'أخضر';
+  if (h < 198) return 'تركوازي';
+  if (h < 252) return v < 0.42 ? 'كحلي' : (v > 0.80 ? 'سماوي' : 'أزرق');
+  if (h < 292) return 'بنفسجي';
+  return 'وردي أو أرجواني';
+}
+
+function analyzeClothGridAndColor() {
+  captureFrame(640, 0.9);
+  const ctx = canvas.getContext('2d', { willReadFrequently: true }), w = canvas.width, h = canvas.height;
+  const x0 = Math.floor(w * 0.22), y0 = Math.floor(h * 0.22), gw = Math.max(10, Math.floor(w * 0.56)), gh = Math.max(10, Math.floor(h * 0.56));
+  const data = ctx.getImageData(x0, y0, gw, gh).data;
+  const counts = new Map(); let totalValid = 0;
+  const cellCb = new Float32Array(25), cellCr = new Float32Array(25), cellN = new Uint32Array(25);
+  for (let py = 0; py < gh; py += 2) {
+    const cy = Math.min(4, Math.floor((py / gh) * 5));
+    for (let px = 0; px < gw; px += 2) {
+      const cx = Math.min(4, Math.floor((px / gw) * 5)), idx = (py * gw + px) * 4;
+      const r = data[idx], g = data[idx + 1], b = data[idx + 2], mx = Math.max(r, g, b);
+      if (mx > 252 || mx < 8) continue;
+      const cName = classifyPixelColor(r, g, b);
+      counts.set(cName, (counts.get(cName) || 0) + 1); totalValid++;
+      const ci = cy * 5 + cx;
+      cellCb[ci] += 128 - 0.1687 * r - 0.3313 * g + 0.5 * b;
+      cellCr[ci] += 128 + 0.5 * r - 0.4187 * g - 0.0813 * b;
+      cellN[ci]++;
+    }
+  }
+  if (totalValid < 25) return null;
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const primary = ranked[0][0], primaryRatio = ranked[0][1] / totalValid, secondary = ranked[1]?.[0] || null;
+  const cbs = [], crs = [];
+  for (let i = 0; i < 25; i++) if (cellN[i] > 5) { cellCb[i] /= cellN[i]; cellCr[i] /= cellN[i]; cbs.push(cellCb[i]); crs.push(cellCr[i]); }
+  cbs.sort((a, b) => a - b); crs.sort((a, b) => a - b);
+  const medCb = cbs[Math.floor(cbs.length / 2)] || 128, medCr = crs[Math.floor(crs.length / 2)] || 128;
+  let spots = 0;
+  for (let i = 0; i < 25; i++) if (cellN[i] > 5 && Math.hypot(cellCb[i] - medCb, cellCr[i] - medCr) > 13.5) spots++;
+  return { primary, secondary, ratio: primaryRatio, hasSuspectedStain: primaryRatio > 0.65 && spots >= 1 && spots <= 4, isPatterned: primaryRatio < 0.55 };
+}
+
+function checkOutfitHarmony(col1, col2) {
+  const neutrals = ['أسود أو داكن جداً', 'أبيض أو فاتح جداً', 'رمادي فاتح', 'رمادي غامق', 'كحلي', 'بيج أو كريمي', 'بني'];
+  if (!col1 || !col2) return '';
+  if (col1.primary === col2.primary) return 'القطعتان بنفس الدرجة (' + col1.primary + ').';
+  if (neutrals.includes(col1.primary) || neutrals.includes(col2.primary)) {
+    if ((col1.primary.includes('كحلي') && col2.primary.includes('أسود')) || (col2.primary.includes('كحلي') && col1.primary.includes('أسود')))
+      return 'الكحلي والأسود قريبان جداً؛ يُفضّل الرمادي أو البيج أو الأبيض مع أحدهما.';
+    return 'القطعتان (' + col1.primary + ' مع ' + col2.primary + ') متناسقتان جداً للخروج.';
+  }
+  if (col1.isPatterned && col2.isPatterned) return 'تنبيه: كلا القطعتين منقوش؛ الأفضل قطعة سادة مع إحداهما.';
+  return 'تم رصد ' + col1.primary + ' مع ' + col2.primary + '.';
+}
+
+async function readColorAndMatchAction() {
+  if (isProcessing) return;
+  isProcessing = true; vibrate(35); playAckTone();
+  try {
+    await withAutoTorchForCapture(async (q) => {
+      if (q?.isVeryDark) { const m = 'المكان مظلم تماماً. إذا كنت تفحص نور الغرفة فالنور مطفأ.'; lastDescription = m; updateStatus(m); speak(m); return; }
+      const col = analyzeClothGridAndColor();
+      if (!col) { const m = 'الألوان غير واضحة؛ قرّب القماش بمسافة شبر.'; updateStatus(m); speak(m); return; }
+      let msg = 'اللون الغالب: ' + col.primary + (col.ratio < 0.48 && col.secondary ? (' مع ' + col.secondary) : '') + '. ';
+      if (col.hasSuspectedStain) msg += 'توجد علامة لونية موضعية وسط القماش؛ قد تكون بقعة أو شعاراً. ';
+      else if (lifeMode === 'clothes' && col.ratio > 0.72) msg += 'اللون متجانس ولا تظهر بقع لونية واضحة محلياً. ';
+      if (lifeMode === 'clothes') {
+        if (!savedOutfitColor) { savedOutfitColor = col; msg += 'تم حفظ هذه القطعة للمقارنة؛ وجّه الكاميرا للقطعة الثانية واضغط «طابق الطقم». '; }
+        else { msg += checkOutfitHarmony(savedOutfitColor, col) + ' '; savedOutfitColor = null; }
+        if (colorBtnLabel) colorBtnLabel.textContent = savedOutfitColor ? 'طابق الطقم' : 'فحص وبقع';
+      }
+      if (q) msg += 'حالة النور: ' + q.lightLabel + '.';
+      lastDescription = msg; updateStatus(msg); speak(msg);
+    });
+  } finally { isProcessing = false; }
+}
+
+async function loadTransformersEngineFixed() {
+  if (location.protocol === 'file:') throw new Error('يتطلب فتح الملف عبر رابط HTTPS أو localhost.');
+  const mod = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2');
+  mod.env.allowLocalModels = false; mod.env.useBrowserCache = true;
+  if (mod.env.backends?.onnx?.wasm) { mod.env.backends.onnx.wasm.numThreads = 1; mod.env.backends.onnx.wasm.proxy = false; }
+  return mod;
+}
+async function enableAndLoadSegFormer() {
+  if (segPipeline) { updateSettingsStatus('نموذج الحوائط والأبواب والسلالم نشط بالفعل.', true); return; }
+  if (segLoading) return;
+  segLoading = true; loadSegformerBtn.disabled = true; loadSegformerBtn.textContent = 'جارٍ التحميل (4.4 ميجا)...';
+  updateSettingsStatus('جارٍ تنزيل نموذج الحوائط والأبواب والسلالم...', true);
+  try {
+    const mod = await loadTransformersEngineFixed();
+    segPipeline = await mod.pipeline('image-segmentation', 'Xenova/segformer-b0-finetuned-ade-512-512', { device: 'wasm', dtype: 'q8' });
+    segBadge.classList.remove('hidden'); loadSegformerBtn.textContent = '✅ نموذج المكان محفوظ ونشط';
+    updateSettingsStatus('تم التحميل والحفظ بنجاح!', true);
+  } catch (e) {
+    segPipeline = null; loadSegformerBtn.disabled = false; loadSegformerBtn.textContent = '🚪 إعادة المحاولة';
+    updateSettingsStatus('تعذر التحميل: ' + (e?.message || 'تحقق من HTTPS'), true);
+  } finally { segLoading = false; }
+}
+async function enableAndLoadNeuralDepth() {
+  if (depthPipeline) { updateSettingsStatus('محرك العمق نشط بالفعل.', true); return; }
+  if (depthLoading) return;
+  depthLoading = true; loadDepthBtn.disabled = true; loadDepthBtn.textContent = 'جارٍ التحميل (27 ميجا)...';
+  updateSettingsStatus('جارٍ تحميل محرك العمق ثلاثي الأبعاد...', true);
+  try {
+    const mod = await loadTransformersEngineFixed();
+    depthPipeline = await mod.pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', { device: 'wasm', dtype: 'q8' });
+    depthBadge.classList.remove('hidden'); loadDepthBtn.textContent = '✅ محرك العمق محفوظ ونشط';
+    updateSettingsStatus('تم التحميل والحفظ بنجاح!', true);
+  } catch (e) {
+    depthPipeline = null; loadDepthBtn.disabled = false; loadDepthBtn.textContent = '📏 إعادة المحاولة';
+    updateSettingsStatus('تعذر التحميل: ' + (e?.message || 'تحقق من HTTPS'), true);
+  } finally { depthLoading = false; }
+}
+
+async function analyzeLocalArchitecture() {
+  if (!segPipeline) return [];
+  try {
+    captureFrame(512, 0.8);
+    const out = await segPipeline(canvas.toDataURL('image/jpeg', 0.8));
+    if (!Array.isArray(out)) return [];
+    const findings = [];
+    for (const seg of out) {
+      const lbl = String(seg.label || '').toLowerCase().trim(), meta = ADE20K_CRITICAL[lbl];
+      if (!meta || !seg.mask?.data) continue;
+      const w = seg.mask.width, h = seg.mask.height, ch = seg.mask.channels || 1, data = seg.mask.data;
+      let matched = 0, sampled = 0, sumX = 0;
+      for (let y = 0; y < h; y += 4) for (let x = 0; x < w; x += 4) { sampled++; if (data[(y * w + x) * ch] > 127) { matched++; sumX += x; } }
+      if ((matched / Math.max(1, sampled)) < meta.minPct) continue;
+      const cx = (sumX / Math.max(1, matched)) / w;
+      findings.push({ ar: meta.ar, pos: cx < 0.34 ? 'على اليسار' : (cx > 0.66 ? 'على اليمين' : 'أمامك'), priority: meta.priority });
+    }
+    findings.sort((a, b) => b.priority - a.priority);
+    const seen = new Set(), res = [];
+    for (const f of findings) {
+      const grp = (f.ar.includes('سلم') || f.ar.includes('درج')) ? 'stairs' : f.ar;
+      if (!seen.has(grp)) { seen.add(grp); res.push(f.ar + ' ' + f.pos); }
+    }
+    return res.slice(0, 4);
+  } catch (e) { return []; }
+}
+
+async function runNeuralDepthAnalysis(archList = []) {
+  if (!depthPipeline) return null;
+  try {
+    captureFrame(384, 0.8);
+    const out = await depthPipeline(canvas.toDataURL('image/jpeg', 0.8));
+    const d = out?.depth; if (!d?.data) return null;
+    const w = d.width, h = d.height, ch = d.channels || 1, data = d.data;
+    const avg = (x0, y0, x1, y1) => {
+      let s = 0, c = 0;
+      for (let y = Math.floor(y0 * h); y < Math.floor(y1 * h); y += 2) for (let x = Math.floor(x0 * w); x < Math.floor(x1 * w); x += 2) { s += data[(y * w + x) * ch]; c++; }
+      return c ? s / c : 0;
+    };
+    const l = avg(0.05, 0.35, 0.33, 0.70), c = avg(0.34, 0.35, 0.66, 0.70), r = avg(0.67, 0.35, 0.95, 0.70);
+    const yFar = avg(0.30, 0.54, 0.70, 0.62), yMid = avg(0.30, 0.68, 0.70, 0.76), yNear = avg(0.30, 0.82, 0.70, 0.90);
+    const g1 = yMid - yFar, g2 = yNear - yMid, dropCliff = g2 - g1;
+    const alerts = [];
+    if (archList.some(a => a.includes('سلم')) && g1 > 8 && yFar > 110) alerts.push('درجات السلم تبدو مرتفعة أمامك (يُرجح صعود — تأكد بالعصا).');
+    if (l < r - 24) alerts.push('اليسار يبدو أبعد نسبياً.'); else if (r < l - 24) alerts.push('اليمين يبدو أبعد نسبياً.');
+    return alerts;
+  } catch (e) { return null; }
+}
+
+function estimateObjectDistance(pred, vw, vh) {
+  const meta = LOCAL_OBJECT_MAP[pred.class]; if (!meta || !pred.bbox || !vw || !vh) return null;
+  const [bx, by, bw, bh] = pred.bbox;
+  const topTouch = by <= vh * 0.03, botTouch = (by + bh) >= vh * 0.97;
+  if (topTouch && botTouch) return { meters: 0.7, steps: 1, text: 'قريب جداً (أقل من خطوتين)' };
+  const isPortrait = vh > vw, tanHalfV = isPortrait ? 0.65 : 0.50, tanHalfH = tanHalfV * (vw / vh);
+  let distM = null;
+  if (meta.h && !topTouch && !botTouch) distM = (meta.h * vh) / (2 * Math.max(1, bh) * tanHalfV);
+  else if (meta.w && bx > vw * 0.03 && (bx + bw) < vw * 0.97) distM = (meta.w * vw) / (2 * Math.max(1, bw) * tanHalfH);
+  else if (meta.h) distM = Math.min((meta.h * vh) / (2 * Math.max(1, bh) * tanHalfV), 1.4);
+  if (!distM || !isFinite(distM)) return null;
+  distM = Math.max(0.4, Math.min(20, distM * 0.92));
+  const steps = Math.max(1, Math.round(distM / STEP_METERS));
+  if (distM < 1.0) return { meters: distM, steps: 1, text: 'قريب جداً (نحو خطوة)' };
+  if (distM < 1.8) return { meters: distM, steps: 2, text: 'نحو خطوتين (متر ونصف)' };
+  const mr = Math.round(distM * 2) / 2;
+  return { meters: mr, steps, text: 'نحو ' + steps + (steps <= 10 ? ' خطوات' : ' خطوة') + ' (' + mr + ' متر)' };
+}
+
+async function initLocalObjectEngine() {
+  if (!localScanEnabled) { localScannerBadge.textContent = 'الأجسام والمسافة: متوقفة'; return null; }
+  if (objectModel) return objectModel;
+  if (objectModelLoading) return objectModelLoading;
+  if (typeof cocoSsd === 'undefined') { localScannerBadge.textContent = 'الأجسام: غير متاحة'; return null; }
+  localScannerBadge.textContent = 'الأجسام والمسافة: جارٍ التحميل...';
+  objectModelLoading = cocoSsd.load({ base: 'lite_mobilenet_v2' }).then(m => {
+    objectModel = m; localScannerBadge.textContent = 'الأجسام والمسافة: نشط'; return m;
+  }).catch(() => { localScannerBadge.textContent = 'الأجسام: تعذر التحميل'; return null; });
+  return objectModelLoading;
+}
+
+function getRelativePositionArabic(bbox, vw) { if (!bbox || !vw) return 'في الوسط'; const r = (bbox[0] + bbox[2] / 2) / vw; return r < 0.34 ? 'على اليسار' : (r > 0.66 ? 'على اليمين' : 'أمامك'); }
+function sideFromPosition(pos) { return pos === 'على اليسار' ? 'left' : (pos === 'على اليمين' ? 'right' : 'center'); }
+
+function startLiveMonitoring() {
+  if (liveMonitorTimer) return;
+  if (localScanEnabled) initLocalObjectEngine();
+  liveMonitorTimer = setInterval(async () => {
+    if (isProcessing || isListening || isScanningFrame) return;
+    if (!videoElement || videoElement.paused || videoElement.ended || videoElement.videoWidth === 0) return;
+    const q = probeFrameQuality();
+    await evaluateContinuousAutoTorch(q);
+    if (!navModeEnabled || !localScanEnabled || assistantSpeaking || !objectModel || lifeMode === 'grooming' || lifeMode === 'clothes') return;
+    if (lifeMode === 'walk' && phonePitchBeta !== null && (Date.now() - lastTiltWarnTime) > 14000) {
+      if (phonePitchBeta > 112) { lastTiltWarnTime = Date.now(); speak('الكاميرا متجهة للأعلى؛ أمِل الهاتف للأمام قليلاً ليرى الطريق.', false); return; }
+      if (phonePitchBeta < 18)  { lastTiltWarnTime = Date.now(); speak('الكاميرا تنظر لأسفل جداً؛ ارفعها قليلاً.', false); return; }
+    }
+    isScanningFrame = true;
+    try {
+      const preds = await objectModel.detect(videoElement, 5, 0.56);
+      const objects = (preds || []).filter(p => LOCAL_OBJECT_MAP[p.class])
+        .sort((a, b) => ((LOCAL_OBJECT_MAP[b.class].priority || 1) - (LOCAL_OBJECT_MAP[a.class].priority || 1)) || ((b.score || 0) - (a.score || 0)));
+      const top = objects[0];
+      if (!top) { prevCenterThreat = null; return; }
+      const meta = LOCAL_OBJECT_MAP[top.class], pos = getRelativePositionArabic(top.bbox, videoElement.videoWidth);
+      const dist = estimateObjectDistance(top, videoElement.videoWidth, videoElement.videoHeight), area = top.bbox[2] * top.bbox[3], now = Date.now();
+      let loomingUrgent = false;
+      if (meta.priority >= 3 && pos === 'أمامك') {
+        if (prevCenterThreat && prevCenterThreat.cls === top.class && (now - prevCenterThreat.t) < 2000 && prevCenterThreat.area > 0 && ((area - prevCenterThreat.area) / prevCenterThreat.area) >= 0.34) loomingUrgent = true;
+        prevCenterThreat = { cls: top.class, area, t: now };
+      } else prevCenterThreat = null;
+      const key = (loomingUrgent ? 'LOOM_' : 'obj_') + top.class + '_' + pos;
+      if (loomingUrgent || key !== lastHazardAlertKey || (now - lastHazardAlertTime) > 6500) {
+        lastHazardAlertKey = key; lastHazardAlertTime = now;
+        const urgent = loomingUrgent || meta.priority >= 3 || (dist && dist.steps <= 2);
+        playSpatialBeep(sideFromPosition(pos), urgent);
+        vibrate(loomingUrgent ? [120, 45, 120, 45, 120] : (urgent ? [85, 55, 85] : [35]));
+        const msg = loomingUrgent ? ('انتبه! ' + meta.ar + ' تقترب منك بسرعة ' + (dist ? ('— ' + dist.text) : '') + '!') : (meta.ar + ' ' + pos + (dist ? (' — ' + dist.text) : '') + '.');
+        updateStatus(msg); updateRiskIndicator(urgent ? 'يستلزم الحذر' : 'لم يظهر خطر واضح في الصورة'); speak(msg, true);
+      }
+    } catch (e) {} finally { isScanningFrame = false; }
+  }, 1200);
+}
+function stopLiveMonitoring() { if (liveMonitorTimer) { clearInterval(liveMonitorTimer); liveMonitorTimer = null; } }
+function setNavMode(on, announce) {
+  navModeEnabled = !!on; writeLS(LS_NAV_MODE, navModeEnabled);
+  if (navModeCheckbox) navModeCheckbox.checked = navModeEnabled;
+  if (navHint) navHint.textContent = navModeEnabled ? 'تنبيهات السير بالخطوات نشطة (لا تغني عن العصا)' : 'التنبيهات المستمرة متوقفة';
+  if (announce) speak(navModeEnabled ? 'تم تشغيل التنبيهات المستمرة.' : 'تم إيقاف التنبيهات المستمرة.');
+}
+
+async function measureDistanceNow() {
+  if (isProcessing) return;
+  isProcessing = true; vibrate(35); playAckTone();
+  try {
+    await withAutoTorchForCapture(async (q) => {
+      if (q?.isVeryDark) { const m = 'المكان مظلم جداً؛ جرّب زر «وطواط الظلام» لفحص الحوائط والأبواب المغلقة.'; updateStatus(m); speak(m); return; }
+      const model = await initLocalObjectEngine(), lines = [];
+      if (model && videoElement.videoWidth) {
+        for (const o of (await model.detect(videoElement, 6, 0.45) || []).filter(p => LOCAL_OBJECT_MAP[p.class]).slice(0, 3)) {
+          const meta = LOCAL_OBJECT_MAP[o.class], pos = getRelativePositionArabic(o.bbox, videoElement.videoWidth), dist = estimateObjectDistance(o, videoElement.videoWidth, videoElement.videoHeight);
+          lines.push(meta.ar + ' ' + pos + (dist ? (' ' + dist.text) : '') + '.');
+        }
+      }
+      const arch = await analyzeLocalArchitecture(); if (arch.length) lines.push('معالم المكان: ' + arch.join('، ') + '.');
+      const depth = await runNeuralDepthAnalysis(arch); if (depth?.length) lines.push(...depth);
+      const visualWall = checkCloseVisualWallFallback(q); if (!lines.length && visualWall) lines.push(visualWall);
+      if (!lines.length) lines.push('لم أرصد أجساماً معروفة. جرّب «وطواط الظلام» للحوائط والأبواب أو فعّل SegFormer.');
+      lines.push('تأكد بعصاك دائماً.');
+      const msg = lines.join(' '); lastDescription = msg; updateStatus(msg); speak(msg);
+    });
+  } finally { isProcessing = false; }
+}
+
+async function ensureOcrWorker() {
+  if (ocrWorker && ocrWorkerLang === ocrLang) return ocrWorker;
+  if (ocrInitPromise) return ocrInitPromise;
+  if (typeof Tesseract === 'undefined') return null;
+  const targetLang = ocrLang;
+  ocrInitPromise = (async () => {
+    try {
+      updateStatus('جارٍ تجهيز حزمة القراءة وحفظها في الهاتف...');
+      const w = await Tesseract.createWorker(targetLang, 1, {
+        logger: m => {
+          if (m.status === 'loading language traineddata') updateStatus('تنزيل حزمة القراءة: ' + Math.round((m.progress || 0) * 100) + '%');
+          else if (m.status === 'recognizing text') updateStatus('قراءة النص: ' + Math.round((m.progress || 0) * 100) + '%');
+        }
+      });
+      ocrWorker = w; ocrWorkerLang = targetLang; return w;
+    } catch (e) { ocrWorker = null; ocrWorkerLang = ''; return null; }
+    finally { ocrInitPromise = null; }
+  })();
+  return ocrInitPromise;
+}
+
+async function preloadOcrFromSettings() {
+  preloadOcrBtn.disabled = true; preloadOcrBtn.textContent = 'جارٍ التنزيل والحفظ...';
+  updateSettingsStatus('جارٍ تنزيل لغة القراءة وحفظها للأبد...', true);
+  const w = await ensureOcrWorker();
+  if (w) { preloadOcrBtn.textContent = '✅ محفوظة وجاهزة'; updateSettingsStatus('تم تنزيل حزمة القراءة وحفظها!', true); }
+  else { preloadOcrBtn.disabled = false; preloadOcrBtn.textContent = '📥 إعادة المحاولة'; updateSettingsStatus('تعذر التنزيل الآن.', true); }
+}
+
+function makeOcrPreprocessedCanvas(sourceCanvas, mode = 'gray', angleDeg = 0) {
+  const sw = sourceCanvas.width, sh = sourceCanvas.height, out = document.createElement('canvas');
+  const scale = Math.min(1.5, Math.max(1.0, 1850 / Math.max(sw, sh)));
+  const rw = Math.max(1, Math.round(sw * scale)), rh = Math.max(1, Math.round(sh * scale));
+  if (angleDeg === 90 || angleDeg === 270) { out.width = rh; out.height = rw; } else { out.width = rw; out.height = rh; }
+  const ctx = out.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.save();
+  if (angleDeg === 180) { ctx.translate(out.width, out.height); ctx.rotate(Math.PI); }
+  else if (angleDeg === 90) { ctx.translate(out.width, 0); ctx.rotate(Math.PI / 2); }
+  else if (angleDeg === 270) { ctx.translate(0, out.height); ctx.rotate(-Math.PI / 2); }
+  ctx.drawImage(sourceCanvas, 0, 0, rw, rh); ctx.restore();
+  const w = out.width, h = out.height, img = ctx.getImageData(0, 0, w, h), d = img.data, gray = new Uint8ClampedArray(w * h);
+  let minY = 255, maxY = 0;
+  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    const y = Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]); gray[p] = y;
+    if ((p & 3) === 0) { if (y < minY) minY = y; if (y > maxY) maxY = y; }
+  }
+  const span = Math.max(30, maxY - minY);
+  if (mode === 'gray') {
+    for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+      const p = y * w + x, st = ((gray[p] - minY) * 255) / span;
+      const shVal = Math.max(0, Math.min(255, st * 1.32 - 0.08 * (((gray[p - 1] + gray[p + 1] + gray[p - w] + gray[p + w] - 4 * minY) * 255) / span)));
+      const idx = p * 4; d[idx] = d[idx + 1] = d[idx + 2] = shVal; d[idx + 3] = 255;
+    }
+  } else {
+    const integral = new Uint32Array(w * h);
+    for (let y = 0; y < h; y++) { let rs = 0; for (let x = 0; x < w; x++) { const p = y * w + x; rs += gray[p]; integral[p] = rs + (y > 0 ? integral[p - w] : 0); } }
+    const rad = Math.max(12, Math.round(Math.min(w, h) / 26));
+    for (let y = 0; y < h; y++) {
+      const y1 = Math.max(0, y - rad), y2 = Math.min(h - 1, y + rad);
+      for (let x = 0; x < w; x++) {
+        const x1 = Math.max(0, x - rad), x2 = Math.min(w - 1, x + rad), cnt = (x2 - x1 + 1) * (y2 - y1 + 1);
+        const sum = integral[y2 * w + x2] - (y1 > 0 ? integral[(y1 - 1) * w + x2] : 0) - (x1 > 0 ? integral[y2 * w + (x1 - 1)] : 0) + (y1 > 0 && x1 > 0 ? integral[(y1 - 1) * w + (x1 - 1)] : 0);
+        const p = y * w + x, val = (gray[p] * cnt < sum * 0.90) ? 0 : 255, idx = p * 4;
+        d[idx] = d[idx + 1] = d[idx + 2] = val; d[idx + 3] = 255;
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0); return out;
+}
+
+function extractCleanLinesResult(data) {
+  const lines = Array.isArray(data?.lines) ? data.lines : [];
+  if (lines.length) {
+    const kept = []; let confSum = 0;
+    for (const ln of lines) {
+      const t = String(ln.text || '').replace(/[|_~`^§©®™]/g, '').replace(/\u0640/g, '').replace(/\s+/g, ' ').trim();
+      const c = Number(ln.confidence) || 0;
+      if (!t || c < 35 || !/[\u0600-\u06FFA-Za-z0-9\u0660-\u0669]{2,}/.test(t)) continue;
+      kept.push(t); confSum += c;
+    }
+    if (kept.length) return { text: kept.join(' ').trim(), score: (confSum / kept.length) + Math.min(10, kept.length * 1.2) };
+  }
+  return { text: String(data?.text || '').replace(/[|_~`]+/g, ' ').replace(/\u0640/g, '').replace(/\s+/g, ' ').trim(), score: Number(data?.confidence) || 0 };
+}
+
+function detectExpiryWarning(rawText) {
+  const t = String(rawText || '').replace(/[٠-٩]/g, c => String('٠١٢٣٤٥٦٧٨٩'.indexOf(c)));
+  const now = new Date(), cy = now.getFullYear(), cm = now.getMonth() + 1;
+  const hasExpCue = /(exp|ex:|expiry|valid\s*until|انتهاء|صلاحية|تنتهي|ينتهي|صالح\s*حتى)/i.test(t);
+  const hasMfgCue = /(mfg|prd|prod|manufactur|إنتاج|صنع|تاريخ\s*الإنتاج)/i.test(t);
+  const monthMap = { jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,sept:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12,
+    يناير:1,فبراير:2,مارس:3,أبريل:4,ابريل:4,مايو:5,يونيو:6,يوليو:7,أغسطس:8,اغسطس:8,سبتمبر:9,أكتوبر:10,اكتوبر:10,نوفمبر:11,ديسمبر:12 };
+
+  function parseDateParts(mm, yy, day) {
+    mm = parseInt(mm, 10); yy = parseInt(yy, 10); if (yy < 100) yy += 2000;
+    if (!(mm >= 1 && mm <= 12 && yy >= 2018 && yy <= 2045)) return null;
+    return { mm, yy, day: day ? parseInt(day, 10) : null };
+  }
+  function fmt(d) { return d.day ? (d.day + '/' + d.mm + '/' + d.yy) : (d.mm + '/' + d.yy); }
+  const cd = now.getDate();
+  // بلا يوم: ينتهي بنهاية الشهر. مع يوم: ينتهي قبل اليوم الحالي (يوم الانتهاء نفسه يُعد صالحاً).
+  function isExpired(d) { return d.yy < cy || (d.yy === cy && (d.mm < cm || (d.mm === cm && d.day != null && d.day < cd))); }
+
+  // Collect candidate dates near cues
+  const candidates = [];
+  // EXP / صلاحية followed by date
+  let m;
+  const expRe = /(?:exp|ex|انتهاء|صلاحية|تنتهي|ينتهي|صالح\s*حتى)[^\d]{0,14}(\d{1,2})\s*[\/\-\.]\s*(\d{1,2})\s*[\/\-\.]\s*(20\d{2}|\d{2})/ig;
+  while ((m = expRe.exec(t)) !== null) {
+    // Prefer DD/MM/YYYY (Egypt common)
+    let day = m[1], mm = m[2], yy = m[3];
+    if (parseInt(mm,10) > 12 && parseInt(day,10) <= 12) { const tmp = day; day = mm; mm = tmp; }
+    const d = parseDateParts(mm, yy, day);
+    if (d) candidates.push({ d, score: 3, source: 'exp-full' });
+  }
+  const expMy = /(?:exp|ex|انتهاء|صلاحية)[^\d]{0,12}(0?[1-9]|1[0-2])\s*[\/\-\.]\s*(20\d{2}|\d{2})/ig;
+  while ((m = expMy.exec(t)) !== null) {
+    const d = parseDateParts(m[1], m[2]);
+    if (d) candidates.push({ d, score: 2, source: 'exp-my' });
+  }
+  // Month name + year near cue
+  const monRe = /(?:exp|ex|انتهاء|صلاحية|mfg|prd|إنتاج)?[^\w\u0600-\u06FF]{0,8}(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|يناير|فبراير|مارس|أبريل|ابريل|مايو|يونيو|يوليو|أغسطس|اغسطس|سبتمبر|أكتوبر|اكتوبر|نوفمبر|ديسمبر)\s*[\/\-\s]?(20\d{2}|\d{2})/ig;
+  while ((m = monRe.exec(t)) !== null) {
+    const mon = monthMap[m[1].toLowerCase()];
+    // تاريخ مسبوق بعلامة إنتاج (MFG/PRD/إنتاج) ليس تاريخ صلاحية؛ لا يدخل المرشحين.
+    const isMfgDate = /(mfg|prd|إنتاج)/i.test(m[0].slice(0, m[0].toLowerCase().indexOf(m[1].toLowerCase())));
+    if (mon && !isMfgDate) {
+      const d = parseDateParts(mon, m[2]);
+      if (d) candidates.push({ d, score: hasExpCue ? 2 : 1, source: 'month' });
+    }
+  }
+  // Generic MM/YYYY or YYYY-MM if hasExpCue
+  if (hasExpCue) {
+    const gen = t.match(/\b(0?[1-9]|1[0-2])\s*[\/\-\.]\s*(20\d{2})\b/) || t.match(/\b(20\d{2})\s*[\/\-\.]\s*(0?[1-9]|1[0-2])\b/);
+    if (gen) {
+      let a = parseInt(gen[1],10), b = parseInt(gen[2],10);
+      const yy = a > 31 ? a : b, mm = a > 31 ? b : a;
+      const d = parseDateParts(mm, yy);
+      if (d) candidates.push({ d, score: 1, source: 'generic' });
+    }
+  }
+
+  if (!candidates.length) {
+    if (hasExpCue) return ' لم أتمكن من قراءة تاريخ الصلاحية بثقة؛ اطلب من شخص موثوق أو الصيدلي قراءته قبل الاستعمال.';
+    return '';
+  }
+  // Prefer highest score, then latest date
+  // الأعلى ثقةً أولاً؛ وعند تعدد التواريخ بنفس الثقة نختار الأقدم (الأحوط) لا الأحدث.
+  const dkey = x => x.d.yy * 10000 + x.d.mm * 100 + (x.d.day || 0);
+  candidates.sort((a,b) => b.score - a.score || dkey(a) - dkey(b));
+  const best = candidates[0].d;
+  // If strong production cue and weak expiry, be more cautious
+  if (hasMfgCue && !hasExpCue && candidates[0].score < 2) {
+    return ' ظهر تاريخ قد يكون للإنتاج وليس للصلاحية. اطلب من الصيدلي التأكد قبل الاستعمال.';
+  }
+  if (isExpired(best)) return ' تنبيه مهم: يبدو أن هناك تاريخ صلاحية منتهياً (' + fmt(best) + ') — تأكد مع الصيدلي قبل الاستعمال!';
+  return ' التاريخ الظاهر للصلاحية: ' + fmt(best) + '.';
+}
+
+function captureFrame(maxDim, quality) {
+  const vw = videoElement.videoWidth, vh = videoElement.videoHeight;
+  if (!vw || !vh) throw new Error('الكاميرا لم تجهز بعد.');
+  const s = Math.min(1, maxDim / Math.max(vw, vh));
+  canvas.width = Math.max(1, Math.round(vw * s)); canvas.height = Math.max(1, Math.round(vh * s));
+  canvas.getContext('2d', { alpha: false }).drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', quality).split(',')[1];
+}
+
+async function captureSharpestCrispPhoto(maxDim, quality) {
+  if (videoStream && typeof ImageCapture !== 'undefined') {
+    let bmp = null;
+    try {
+      const tr = videoStream.getVideoTracks()[0];
+      if (tr?.readyState === 'live') {
+        const blob = await Promise.race([new ImageCapture(tr).takePhoto(), new Promise((_, rej) => setTimeout(() => rej(new Error('t')), 2100))]);
+        bmp = await createImageBitmap(blob, { imageOrientation: "from-image" });
+        const s = Math.min(1, maxDim / Math.max(bmp.width, bmp.height));
+        canvas.width = Math.max(1, Math.round(bmp.width * s)); canvas.height = Math.max(1, Math.round(bmp.height * s));
+        canvas.getContext('2d', { alpha: false }).drawImage(bmp, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL('image/jpeg', quality).split(',')[1];
+      }
+    } catch (e) {} finally { if (bmp) try { bmp.close(); } catch (e) {} }
+  }
+  const q1 = probeFrameQuality(), f1 = captureFrame(maxDim, quality);
+  await new Promise(r => setTimeout(r, 120));
+  const q2 = probeFrameQuality();
+  return (q2 && q1 && q2.sharpness >= q1.sharpness) ? captureFrame(maxDim, quality) : f1;
+}
+
+async function readTextSmart() {
+  if (isProcessing) { updateStatus('انتظر انتهاء الطلب الحالي.'); return; }
+  isProcessing = true; hideRiskIndicator(); vibrate(35); playAckTone();
+  try {
+    await withAutoTorchForCapture(async (q) => {
+      if (q?.isVeryDark) { const m = 'الإضاءة مظلمة جداً أو العدسة مغطاة.'; updateStatus(m); speak(m); return; }
+      let qrFound = '';
+      if (barcodeDetector) { try { const codes = await barcodeDetector.detect(videoElement); if (codes?.[0]?.rawValue) qrFound = String(codes[0].rawValue).trim(); } catch (e) {} }
+      if (hasCloudVision()) {
+        updateStatus('جارٍ قراءة النص بدقة عالية...'); speak('جارٍ قراءة النص. لإلغاء الطلب المس زر الصوت.');
+        try {
+          const b64 = await captureSharpestCrispPhoto(TEXT_MAX_DIM, 0.90);
+          const rawText = await callCloudText(b64, 'اقرأ كل النص حرفياً (عربي أو إنجليزي) حتى لو كانت الورقة مقلوبة. إذا كان دواءً فاذكر الاسم وتاريخ الانتهاء فقط دون تخمين.');
+          if (rawText) {
+            lastRecognizedText = rawText;
+            const out = (qrFound ? (rawText + '. باركود: ' + qrFound) : rawText) + detectExpiryWarning(rawText);
+            lastDescription = out; updateStatus(out); speak(out); return;
+          }
+        } catch (e) { if (consumeCloudCancel()) { const m = 'تم إلغاء الطلب السحابي.'; updateStatus(m); speak(m); return; } }
+      }
+      const worker = await ensureOcrWorker();
+      if (!worker) { const m = qrFound ? ('باركود: ' + qrFound) : 'تعذر تحميل محرك القراءة. يلزم اتصال بالإنترنت مرة واحدة.'; updateStatus(m); speak(m); return; }
+      await captureSharpestCrispPhoto(TEXT_MAX_DIM, 0.94);
+      updateStatus('جارٍ تنقية الورقة وقراءة النص...');
+      await worker.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1', user_defined_dpi: '300' });
+      const rGray = await worker.recognize(makeOcrPreprocessedCanvas(canvas, 'gray', 0));
+      let best = extractCleanLinesResult(rGray.data), flipped = false;
+      if (best.score < 68 || best.text.length < 12) {
+        const bRes = extractCleanLinesResult((await worker.recognize(makeOcrPreprocessedCanvas(canvas, 'bradley', 0))).data);
+        if (bRes.score > best.score + 3) best = bRes;
+      }
+      if (best.score < 66 || best.text.length < 10) {
+        const res180 = extractCleanLinesResult((await worker.recognize(makeOcrPreprocessedCanvas(canvas, 'gray', 180))).data);
+        if (res180.score > best.score + 5) { best = res180; flipped = true; }
+      }
+      if (best.score < 62 || best.text.length < 8) {
+        for (const ang of [90, 270]) {
+          const rAng = extractCleanLinesResult((await worker.recognize(makeOcrPreprocessedCanvas(canvas, 'gray', ang))).data);
+          if (rAng.score > best.score + 6) { best = rAng; flipped = true; }
+        }
+      }
+      lastRecognizedText = best.text;
+      let spoken;
+      if (!best.text && qrFound) spoken = 'رمز باركود أو QR: ' + qrFound;
+      else if (!best.text) spoken = (q && q.isFlat) ? 'الصورة مهزوزة أو قريبة جداً. أبعد الورقة قدر شبر وثبّت يدك.' : 'لم أجد نصاً واضحاً. ضع الورقة تحت إضاءة جيدة على بعد شبر.';
+      else {
+        spoken = (flipped ? 'تم تصحيح الورقة المقلوبة: ' : '') + best.text + detectExpiryWarning(best.text);
+        if (best.score < 60) spoken += '. ملاحظة: وضوح النص متوسط.';
+        if (/[A-Za-z]{4,}/.test(best.text) && !/[\u0600-\u06FF]{4,}/.test(best.text)) spoken += '. النص إنجليزي؛ قل «ترجم» لترجمته.';
+      }
+      lastDescription = spoken; updateStatus(spoken); speak(spoken);
+    });
+  } finally { isProcessing = false; }
+}
+
+function normalizeOcrDigits(v) { return String(v || '').normalize('NFKC').replace(/[\u064B-\u065F\u0670ـ]/g, '').replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/[٠-٩]/g, c => String('٠١٢٣٤٥٦٧٨٩'.indexOf(c))).replace(/[،؛:|]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase(); }
+const EGP_RULES = [
+  { value: 200, words: ['مئتا', 'مائتا', 'مئتان', 'مائتان', 'مائتين', 'two hundred'], colors: ['زيتوني', 'بني', 'بيج أو كريمي', 'أصفر أو ذهبي'] },
+  { value: 100, words: ['مائه', 'مئه', 'مائة', 'مئة', 'one hundred'], colors: ['وردي أو أرجواني', 'نبيتي أو أحمر غامق', 'رمادي فاتح', 'بيج أو كريمي', 'سماوي', 'تركوازي', 'أزرق فاتح'] },
+  { value: 50,  words: ['خمسون', 'خمسين', 'fifty'], colors: ['بني', 'نبيتي أو أحمر غامق', 'برتقالي', 'بيج أو كريمي'] },
+  { value: 20,  words: ['عشرون', 'عشرين', 'twenty'], colors: ['أخضر', 'أخضر فاتح', 'تركوازي', 'سماوي'] },
+  { value: 10,  words: ['عشره', 'عشرة', 'ten'], colors: ['برتقالي', 'بني', 'أحمر', 'بيج أو كريمي'] },
+  { value: 5,   words: ['خمسه', 'خمسة', 'five'], colors: ['تركوازي', 'أخضر', 'سماوي', 'أزرق'] },
+  { value: 1,   words: ['جنيه واحد', 'one pound'], colors: ['بيج أو كريمي', 'بني', 'رمادي فاتح'], requireCue: true }
+];
+function inferEgyptianDenomination(raw, col) {
+  const t = normalizeOcrDigits(raw), cue = /(جنيه|جنيها|جنيهات|البنك|المركزي|مصر|egypt|egp|pounds|central bank)/.test(t), found = new Set();
+  for (const d of EGP_RULES) {
+    if (d.requireCue && !cue) continue;
+    if ((!d.requireCue && new RegExp('(?:^|\\D)' + d.value + '(?:\\D|$)').test(t)) || d.words.some(w => t.includes(normalizeOcrDigits(w)))) found.add(d.value);
+  }
+  if (found.size === 1) {
+    const val = [...found][0]; if (cue) return { value: val, reason: '' };
+    const r = EGP_RULES.find(x => x.value === val);
+    if (col && r && r.colors.includes(col.primary)) return { value: val, reason: 'واللون يرجح هذه الفئة.' };
+    return { value: null, reason: 'ظهر الرقم ' + val + ' دون تأكيد أنه عملة.' };
+  }
+  return { value: null, reason: found.size > 1 ? 'ظهرت أكثر من فئة.' : 'لم تظهر أرقام العملة بوضوح.' };
+}
+async function recognizeEgyptianCurrency() {
+  if (isProcessing) return;
+  isProcessing = true; hideRiskIndicator(); vibrate(35); playAckTone();
+  try {
+    await withAutoTorchForCapture(async (q) => {
+      if (q?.isVeryDark) { const m = 'الإضاءة مظلمة لفحص العملة.'; updateStatus(m); speak(m); return; }
+      if (hasCloudVision()) {
+        updateStatus('جارٍ فحص العملة...'); speak('جارٍ فحص العملة. لإلغاء الطلب المس زر الصوت.');
+        try {
+          const b64 = await captureSharpestCrispPhoto(TEXT_MAX_DIM, 0.90);
+          let ans = await callCloudText(b64, 'هذه عملة مصرية (أو لا شيء). لا تخمّن: اذكر الفئة فقط إذا ظهر رقمها بوضوح في الصورة (1، 5، 10، 20، 50، 100، 200 جنيه)، وإلا قل «غير واضحة». أجب في جملة قصيرة.');
+          if (ans) { ans += ' هذا تقدير آلي وقد يخطئ؛ تحقق من الفئة بالملمس أو اسأل شخصاً تثق به قبل الدفع.'; lastDescription = ans; updateStatus(ans); speak(ans); return; }
+        } catch (e) { if (consumeCloudCancel()) { const m = 'تم إلغاء الطلب السحابي.'; updateStatus(m); speak(m); return; } }
+      }
+      const worker = await ensureOcrWorker();
+      if (!worker) { const m = 'تعذر تحميل قارئ العربية.'; updateStatus(m); speak(m); return; }
+      await captureSharpestCrispPhoto(TEXT_MAX_DIM, 0.94);
+      const col = analyzeClothGridAndColor();
+      await worker.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1', user_defined_dpi: '300' });
+      let res = inferEgyptianDenomination((await worker.recognize(makeOcrPreprocessedCanvas(canvas, 'gray', 0)))?.data?.text || '', col);
+      if (!res.value) {
+        const res180 = inferEgyptianDenomination((await worker.recognize(makeOcrPreprocessedCanvas(canvas, 'gray', 180)))?.data?.text || '', col);
+        if (res180.value) res = res180;
+      }
+      if (!res.value) {
+        for (const ang of [90, 270]) {
+          const rAng = inferEgyptianDenomination((await worker.recognize(makeOcrPreprocessedCanvas(canvas, 'gray', ang)))?.data?.text || '', col);
+          if (rAng.value) { res = rAng; break; }
+        }
+      }
+      const msg = res.value ? ('تقدير: ' + res.value + ' جنيه مصري. ' + res.reason + ' تحقّق بالملمس.') : ('لم أحدد العملة بثقة. ' + res.reason + ' افرد الورقة على بُعد شبر.');
+      lastDescription = msg; updateStatus(msg); speak(msg);
+    });
+  } finally { isProcessing = false; }
+}
+
+async function buildLocalSceneReport(objects, archList, depthAlerts, lightQuality, modelRan, selfieCheck) {
+  if (lightQuality?.isLensCovered) { updateRiskIndicator('تعذر التحقق'); return 'يبدو أن إصبعك يغطي العدسة؛ أبعد يدك وأعد المحاولة.'; }
+  if (lightQuality?.isVeryDark) { updateRiskIndicator('تعذر التحقق'); return 'المكان مظلم جداً. استخدم زر «وطواط الظلام» لفحص الحوائط والأبواب المغلقة.'; }
+  const parts = [];
+  if (lifeMode === 'grooming') {
+    if (selfieCheck && !selfieCheck.ready) parts.push(selfieCheck.hint);
+    else parts.push((selfieCheck?.hint ? (selfieCheck.hint + ' ') : '') + 'الإضاءة: ' + (lightQuality?.lightLabel || 'جيدة') + '. لتقييم تهذيب الشعر واللحية بدقة فعّل العيون السحابية المجانية.');
+    updateRiskIndicator('لم يظهر خطر واضح في الصورة'); return parts.join(' ');
+  }
+  if (lifeMode === 'clothes') {
+    const col = analyzeClothGridAndColor();
+    if (col) {
+      parts.push('لون الملابس ' + col.primary + (col.secondary && col.ratio < 0.48 ? (' مع ' + col.secondary) : '') + '.');
+      if (col.hasSuspectedStain) parts.push('تظهر علامة لونية موضعية قد تكون بقعة.');
+      else if (col.ratio > 0.72) parts.push('اللون متجانس ولا تظهر بقع لونية واضحة.');
+    } else parts.push('قرّب الكاميرا من الملابس بمسافة شبر.');
+    updateRiskIndicator('لم يظهر خطر واضح في الصورة'); return parts.join(' ');
+  }
+  const visualWall = checkCloseVisualWallFallback(lightQuality);
+  const hasUrgent = objects.some(p => (LOCAL_OBJECT_MAP[p.class]?.priority || 1) >= 3)
+    || archList.some(a => a.includes('سلم') || a.includes('مياه') || a.includes('طريق') || a.includes('حائط'))
+    || (depthAlerts && depthAlerts.length > 0) || !!visualWall;
+  updateRiskIndicator(hasUrgent ? 'يستلزم الحذر' : (modelRan || archList.length ? 'لم يظهر خطر واضح في الصورة' : 'تعذر التحقق'));
+  if (archList.length) parts.push('معالم المكان: ' + archList.join('، ') + '.');
+  if (objects.length) {
+    parts.push('الأجسام: ' + objects.slice(0, 4).map(p => {
+      const m = LOCAL_OBJECT_MAP[p.class], pos = getRelativePositionArabic(p.bbox, videoElement.videoWidth), d = estimateObjectDistance(p, videoElement.videoWidth, videoElement.videoHeight);
+      return m.ar + ' ' + pos + (d ? (' (' + d.text + ')') : '');
+    }).join('، ') + '.');
+  }
+  if (depthAlerts?.length) parts.push(...depthAlerts);
+  if (!parts.length && visualWall) parts.push(visualWall);
+  if (!parts.length) parts.push('لم أرصد عوائق معروفة أمام الكاميرا.');
+  parts.push('استعن بعصاك دائماً.');
+  return parts.join(' ');
+}
+
+async function captureAndAnalyze(customQuestion = null) {
+  if (isProcessing) { updateStatus('انتظر انتهاء الطلب الحالي.'); return; }
+  if (isListening) stopVoiceRecognition();
+  isProcessing = true; hideRiskIndicator(); vibrate(35); playAckTone();
+  updateStatus(customQuestion ? 'جارٍ الإجابة...' : 'جارٍ فحص المشهد...');
+  try {
+    await withAutoTorchForCapture(async (q) => {
+      let selfieCheck = null;
+      if (lifeMode === 'grooming') {
+        selfieCheck = await checkSelfieFramingLocally(q);
+        if (!selfieCheck.ready && !customQuestion) { updateStatus(selfieCheck.hint); speak(selfieCheck.hint); return; }
+      }
+      if (q?.isVeryDark && !hasCloudVision()) {
+        const m = 'المكان مظلم جداً. استخدم زر «وطواط الظلام» في الأسفل لكشف الحوائط والأبواب المغلقة.';
+        updateRiskIndicator('تعذر التحقق'); updateStatus(m); speak(m); return;
+      }
+      let objects = [], modelRan = false;
+      if (localScanEnabled && objectModel && videoElement.videoWidth > 0 && lifeMode !== 'grooming' && lifeMode !== 'clothes') {
+        const preds = await objectModel.detect(videoElement, 6, 0.50); modelRan = true;
+        objects = (preds || []).filter(p => LOCAL_OBJECT_MAP[p.class]).sort((a, b) => (b.bbox[2] * b.bbox[3]) - (a.bbox[2] * a.bbox[3]));
+      }
+      let spoken;
+      if (hasCloudVision()) {
+        speak((customQuestion ? 'جارٍ الإجابة.' : 'جارٍ التحليل.') + ' لإلغاء الطلب المس زر الصوت.');
+        try {
+          const b64 = captureFrame(MAX_DIM, 0.84);
+          const promptText = LIFE_MODES[lifeMode].prompt + '\n' + (customQuestion ? ('سؤال المستخدم: ' + customQuestion) : 'حلل الصورة بدقة.') +
+            '\nأعد JSON فقط بهذا الشكل: {"risk_level":"خطر ظاهر|يستلزم الحذر|لم يظهر خطر واضح في الصورة","risk_summary":"...","hazards":[{"category":"...","location":"...","distance_steps":"...","details":"..."}],"scene_description":"...","request_answer":"...","uncertainty":"..."}';
+          spoken = formatCloudStructured(await callCloudStructured(b64, promptText), !!customQuestion);
+        } catch (err) {
+          if (consumeCloudCancel()) { const m = 'تم إلغاء الطلب السحابي.'; updateStatus(m); speak(m); return; }
+          const arch = await analyzeLocalArchitecture();
+          spoken = await buildLocalSceneReport(objects, arch, await runNeuralDepthAnalysis(arch), q, modelRan, selfieCheck);
+          if (customQuestion) spoken = 'تعذر الاتصال السحابي. محلياً: ' + spoken;
+        }
+      } else {
+        const arch = await analyzeLocalArchitecture();
+        spoken = await buildLocalSceneReport(objects, arch, await runNeuralDepthAnalysis(arch), q, modelRan, selfieCheck);
+        if (customQuestion) spoken = 'الأسئلة الحرة تحتاج ربط الخادم المجاني أو مفتاحاً. محلياً: ' + spoken;
+      }
+      lastDescription = spoken; updateStatus(spoken); speak(spoken);
+    });
+  } catch (e) { updateRiskIndicator('تعذر التحقق'); updateStatus(e?.message || 'تعذر الفحص.'); speak(e?.message || 'تعذر الفحص.'); }
+  finally { isProcessing = false; }
+}
+
+function cleanText(v) { return String(v || '').replace(/[*#_`>]/g, '').replace(/\s+/g, ' ').trim(); }
+function formatCloudStructured(data, isQ) {
+  if (!data || typeof data === 'string') return cleanText(data);
+  const level = ['خطر ظاهر', 'يستلزم الحذر', 'لم يظهر خطر واضح في الصورة'].includes(data.risk_level) ? data.risk_level : 'يستلزم الحذر';
+  updateRiskIndicator(level);
+  const hz = (Array.isArray(data.hazards) ? data.hazards : []).slice(0, 4).map(h => cleanText(h.category || 'تنبيه') + ' ' + cleanText(h.location || '') + (h.distance_steps ? (' (' + cleanText(h.distance_steps) + ')') : '') + ': ' + cleanText(h.details || ''));
+  const parts = [];
+  if (level === 'خطر ظاهر') { parts.push('تحذير:'); if (data.risk_summary) parts.push(cleanText(data.risk_summary)); if (hz.length) parts.push(hz.join('. ')); }
+  else if (level === 'يستلزم الحذر' && !isQ && hz.length) parts.push(hz.join('. '));
+  if (isQ && data.request_answer) parts.push(cleanText(data.request_answer));
+  if (data.scene_description && (!isQ || !data.request_answer)) parts.push(cleanText(data.scene_description));
+  if (data.uncertainty) parts.push('ملاحظة: ' + cleanText(data.uncertainty));
+  return parts.filter(Boolean).join(' ');
+}
+/* إلغاء الطلب السحابي المعلّق (V20.6): كل طلب سحابي يسجَّل هنا، ولمسة زر الصوت أثناء الانتظار تُلغيه فوراً. */
+const cloudControllers = new Set(); let cloudCancelFlag = false;
+function newCloudController() { const c = new AbortController(); cloudControllers.add(c); return c; }
+function cloudDone(c) { cloudControllers.delete(c); }
+function cloudPending() { return cloudControllers.size > 0; }
+function cancelCloudRequests() { if (!cloudControllers.size) return false; cloudCancelFlag = true; for (const c of [...cloudControllers]) { try { c.abort(); } catch (e) {} } cloudControllers.clear(); return true; }
+function consumeCloudCancel() { const f = cloudCancelFlag; cloudCancelFlag = false; return f; }
+async function callProxyWorker(imageBase64, prompt, task) {
+  const c = newCloudController(), t = setTimeout(() => c.abort(), TIMEOUT_MS);
+  try {
+    const r = await fetch(proxyUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageBase64, prompt, task }), signal: c.signal });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok || !d.text) throw new Error(d.error || 'Proxy error');
+    return String(d.text).trim();
+  } finally { clearTimeout(t); cloudDone(c); }
+}
+async function callCloudStructured(b64, promptText) {
+  cloudCancelFlag = false;
+  let raw = proxyUrl ? await callProxyWorker(b64, promptText, 'structured')
+    : (provider === 'openrouter' ? await callOpenRouterWithFailover(b64, promptText) : await callGeminiWithFailover(b64, promptText, true));
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (m) { try { return JSON.parse(m[0]); } catch (e) {} }
+  return { risk_level: 'يستلزم الحذر', scene_description: raw, hazards: [], risk_summary: '', request_answer: raw, uncertainty: '' };
+}
+async function callCloudText(b64, promptText) {
+  cloudCancelFlag = false;
+  if (proxyUrl) return cleanText(await callProxyWorker(b64, promptText, 'simple'));
+  if (provider === 'openrouter') return cleanText(await callOpenRouterWithFailover(b64, promptText));
+  return cleanText(await callGeminiWithFailover(b64, promptText, false));
+}
+function buildGeminiThinkingConfig(mName) {
+  const cfg = PROVIDERS.gemini.models[mName]; if (!cfg) return null;
+  if (Number.isInteger(cfg.thinkingBudget)) return { thinkingBudget: cfg.thinkingBudget };
+  if (cfg.thinkingLevel) return { thinkingLevel: cfg.thinkingLevel };
+  return null;
+}
+async function callSingleGeminiModel(mName, b64, promptText, structured, useThinking = true) {
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(mName) + ':generateContent';
+  const genCfg = { maxOutputTokens: 850 };
+  if (structured) { genCfg.responseMimeType = 'application/json'; genCfg.responseJsonSchema = RESPONSE_SCHEMA; }
+  const tc = useThinking ? buildGeminiThinkingConfig(mName) : null;
+  if (tc) genCfg.thinkingConfig = tc;
+  const c = newCloudController(), t = setTimeout(() => c.abort(), TIMEOUT_MS);
+  try {
+    const r = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({ contents: [{ parts: [{ text: promptText }, { inlineData: { mimeType: 'image/jpeg', data: b64 } }] }], generationConfig: genCfg }),
+      signal: c.signal
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      if (r.status === 400 && useThinking) return callSingleGeminiModel(mName, b64, promptText, structured, false);
+      const err = new Error('HTTP ' + r.status); err.status = r.status; throw err;
+    }
+    return (d?.candidates?.[0]?.content?.parts || []).map(p => p.text).filter(Boolean).join('').trim();
+  } finally { clearTimeout(t); cloudDone(c); }
+}
+async function callGeminiWithFailover(b64, promptText, structured) {
+  const queue = [...new Set([modelName, 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.6-flash'])];
+  let lastErr;
+  for (const m of queue) {
+    try { return await callSingleGeminiModel(m, b64, promptText, structured, true); }
+    catch (e) { lastErr = e; if (![404, 429, 500, 503].includes(e.status)) throw e; }
+  }
+  throw lastErr || new Error('Gemini failed');
+}
+async function callOpenRouterWithFailover(b64, promptText) {
+  const queue = [...new Set([modelName, 'nvidia/nemotron-3.5-super-vl:free', 'openrouter/free'])];
+  let lastErr;
+  for (const m of queue) {
+    const c = newCloudController(), t = setTimeout(() => c.abort(), TIMEOUT_MS);
+    try {
+      const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json', 'HTTP-Referer': location.href, 'X-Title': 'Sanad Blind Aid' },
+        body: JSON.stringify({ model: m, messages: [{ role: 'user', content: [{ type: 'text', text: promptText }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + b64 } }] }], max_tokens: 750 }),
+        signal: c.signal
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d?.choices?.[0]?.message?.content) return String(d.choices[0].message.content).trim();
+      const err = new Error('OpenRouter ' + r.status); err.status = r.status; throw err;
+    } catch (e) { lastErr = e; if (![404, 429, 500, 502, 503].includes(e.status)) throw e; }
+    finally { clearTimeout(t); cloudDone(c); }
+  }
+  throw lastErr || new Error('OpenRouter failed');
+}
+
+function getSpeechRecognitionConstructor() { return window.SpeechRecognition || window.webkitSpeechRecognition || null; }
+function stopVoiceRecognition() { if (recognition) { try { recognition.onresult = null; recognition.onerror = null; recognition.onend = null; recognition.stop(); } catch (e) {} } recognition = null; isListening = false; }
+function normalizeArabicCommand(t) { return String(t || '').normalize('NFKC').toLowerCase().replace(/[\u064B-\u065F\u0670ـ]/g, '').replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/[؟?!،,.؛:]/g, ' ').replace(/\s+/g, ' ').trim(); }
+function parseVoiceCommand(raw) {
+  const n = normalizeArabicCommand(raw).replace(/^(يا سند|من فضلك|لو سمحت|ممكن)\s+/, '').trim();
+  if (!n) return null;
+  const exact = (arr, type) => new Set(arr.map(normalizeArabicCommand)).has(n) ? { type } : null;
+  let p = exact(['اسكت', 'توقف', 'بس', 'وقف الصوت'], 'stop'); if (p) return p;
+  p = exact(['احفظ نسخه من اشيائي', 'نسخه احتياطيه', 'احفظ اشيائي', 'نسخه من اشيائي', 'صدر اشيائي'], 'exportMine'); if (p) return p;
+  p = exact(['ايه اللي بيخرج من الهاتف', 'ايه اللي بيتبعت', 'الخصوصيه', 'هل بياناتي امنه', 'ايه اللي بيتبعت للانترنت'], 'privacyInfo'); if (p) return p;
+  p = exact(['الغي', 'الغاء', 'الغي الطلب', 'وقف الطلب', 'كفايه'], 'cancel'); if (p) return p;
+  p = exact(['ماذا علمتك', 'ماذا علمتني', 'ايه اللي علمتهولك', 'ايه اللي علمتك اياه', 'ايه علمتك', 'علمتك ايه', 'كم شيء علمتك', 'كام حاجه علمتك'], 'recapMine'); if (p) return p;
+  if (/^(?:احذف|امسح|حذف)\s+(?:كل|جميع)\s+(?:اشيائي|حاجاتي|الاشياء)$/.test(n)) return { type: 'delAllMine' };
+  p = exact(['شغل الكشاف', 'افتح الكشاف', 'شغل الفلاش'], 'torchOn'); if (p) return p;
+  p = exact(['اطفي الكشاف', 'اقفل الكشاف', 'اطفي الفلاش'], 'torchOff'); if (p) return p;
+  p = exact(['شغل الرصد', 'تشغيل الرصد', 'شغل الملاحه'], 'navOn'); if (p) return p;
+  p = exact(['وقف الرصد', 'ايقاف الرصد', 'وقف الملاحه'], 'navOff'); if (p) return p;
+  p = exact(['اعد', 'اعد الوصف', 'تاني'], 'repeat'); if (p) return p;
+  p = exact(['اقرا لي', 'اقرا', 'اقرا النص', 'اقرا الورقه', 'اقرا الدواء'], 'read'); if (p) return p;
+  p = exact(['العمله', 'كام دي', 'كام جنيه'], 'currency'); if (p) return p;
+  p = exact(['لونه ايه', 'ما لون هذا', 'في نور', 'النور شغال', 'نسق ملابسي', 'طابق الطقم'], 'color'); if (p) return p;
+  p = exact(['المسافه', 'كم يبعد', 'قد ايه المسافه'], 'distance'); if (p) return p;
+  p = exact(['الوطواط', 'وطواط', 'المجس الصوتي', 'في حيطه', 'في باب'], 'sonar'); if (p) return p;
+  p = exact(['ترجم', 'ترجم النص', 'ترجم للعربي'], 'translate'); if (p) return p;
+  p = exact(['وضع الطريق', 'الشارع', 'السلم'], 'modeWalk'); if (p) return p;
+  p = exact(['وضع البيت', 'الباب', 'الشباك'], 'modeHome'); if (p) return p;
+  p = exact(['ملابسي', 'هدومي', 'الملابس', 'في بقعه'], 'modeClothes'); if (p) return p;
+  p = exact(['المراه', 'شعري', 'شكلي', 'مظهري'], 'modeGrooming'); if (p) return p;
+  p = exact(['ما هذا', 'ايه ده', 'ده ايه', 'عرفني', 'ما هذا الشيء'], 'identify'); if (p) return p;
+  p = exact(['علمني', 'علم', 'احفظ ده', 'احفظ هذا', 'علمني شيئا'], 'teach'); if (p) return p;
+  p = exact(['اشيائي', 'حاجاتي', 'ايه حاجاتي'], 'listMine'); if (p) return p;
+  p = exact(['ايه اللي تعرفه', 'ماذا تعرف', 'المعرفه العامه', 'حزم المعرفه', 'ايه اللي عندك'], 'listGeneral'); if (p) return p;
+  const dl = n.match(/^(?:احذف|امسح|انسي|حذف)(?:\s+(.+))?$/);
+  if (dl) {
+    let tgt = (dl[1] || '').trim();
+    if (/^(شيء|شيئا|شي|حاجه|حاجات|حاجتي|شيء من اشيائي|شيئا من اشيائي|من اشيائي)$/.test(tgt)) tgt = '';
+    return { type: 'delMine', target: tgt };
+  }
+  const vf = n.match(/^هل (?:هذا|هذه|ده|دي|هاذا) (.+)$/);
+  if (vf && vf[1] && vf[1].trim().length >= 2) return { type: 'verify', target: vf[1].trim(), question: String(raw || '').trim() };
+  const s = n.match(/^(?:ابحث عن|دور علي|فين|اين|لاقيلي)\s+(.+)$/);
+  if (s && s[1] && s[1].trim().length >= 2) return { type: 'find', target: s[1].trim() };
+  return { type: 'question', question: String(raw || '').trim() };
+}
+
+function activateVoiceCommands() {
+  if (isProcessing) { if (cancelCloudRequests()) { vibrate([60, 40, 60]); stopSpeaking(); } return; } // لمسة أثناء انتظار السحابة = إلغاء الطلب
+  const R = getSpeechRecognitionConstructor();
+  if (!R) { const m = 'الأوامر الصوتية غير مدعومة هنا؛ استخدم الأزرار.'; updateStatus(m); speak(m); return; }
+  stopSpeaking(); stopVoiceRecognition();
+  setTimeout(() => {
+    try {
+      const inst = new R(); recognition = inst;
+      inst.lang = 'ar-EG'; inst.continuous = false; inst.interimResults = false; inst.maxAlternatives = 3;
+      let got = false, err = false;
+      inst.onstart = () => { isListening = true; updateStatus('أستمع إليك... اسأل ما تريد.'); vibrate([35, 65, 35]); playAckTone(); };
+      inst.onresult = ev => { got = true; isListening = false; const txt = ev.results?.[0]?.[0]?.transcript || ''; try { inst.stop(); } catch (e) {} handleVoiceCommand(parseVoiceCommand(txt)); };
+      inst.onerror = ev => { err = true; isListening = false; if (ev.error !== 'aborted') { updateStatus('لم أسمع الأمر بوضوح.'); speak('لم أسمع الأمر بوضوح.'); } };
+      inst.onend = () => { isListening = false; if (!got && !err) updateStatus('انتهى الاستماع.'); if (recognition === inst) recognition = null; };
+      inst.start();
+    } catch (e) { isListening = false; }
+  }, 180);
+}
+
+async function findObjectLive(targetRaw) {
+  const t = normalizeArabicCommand(targetRaw); isProcessing = true;
+  try {
+    const mineMatch = matchPersonalByName(await loadPersonalItems(), targetRaw);
+    if (mineMatch) { await findPersonalLive(mineMatch); return; }
+    if (personalAmbiguous) { const m = 'وجدت عدة أشياء متشابهة: ' + personalAmbiguous.join('، ') + '. قل الاسم كاملاً.'; updateStatus(m); speak(m); return; }
+    if (localScanEnabled && objectModel && videoElement.videoWidth > 0) {
+      const found = ((await objectModel.detect(videoElement, 8, 0.40)) || []).filter(p => LOCAL_OBJECT_MAP[p.class]).find(o => {
+        const ar = normalizeArabicCommand(LOCAL_OBJECT_MAP[o.class].ar); return ar.includes(t) || t.includes(ar);
+      });
+      if (found) {
+        const pos = getRelativePositionArabic(found.bbox, videoElement.videoWidth), dist = estimateObjectDistance(found, videoElement.videoWidth, videoElement.videoHeight);
+        playSpatialBeep(sideFromPosition(pos), false); vibrate([50, 50, 50]);
+        const m = 'وجدت ' + LOCAL_OBJECT_MAP[found.class].ar + ' ' + pos + (dist ? (' ' + dist.text) : '') + '.';
+        updateStatus(m); speak(m); return;
+      }
+    }
+    await loadInstalledPacks();
+    const genMatch = matchPersonalByName(generalClasses.filter(c => c.kind !== 'background'), targetRaw);
+    if (genMatch) { await findPersonalLive(genMatch, generalClasses); return; }
+    if (segPipeline) {
+      const match = (await analyzeLocalArchitecture()).find(line => normalizeArabicCommand(line).includes(t));
+      if (match) { updateStatus('وجدت ' + match); speak('وجدت ' + match); return; }
+    }
+    if (hasCloudVision()) { isProcessing = false; await captureAndAnalyze('هل ترى «' + targetRaw + '»؟ أين مكانه وكم يبعد بالخطوات؟'); return; }
+    const m = 'لم أجد «' + targetRaw + '» أمامي الآن.'; updateStatus(m); speak(m);
+  } finally { isProcessing = false; }
+}
+
+async function handleVoiceCommand(cmd) {
+  if (!cmd) return; vibrate(25);
+  switch (cmd.type) {
+    case 'stop': stopSpeaking(); cancelCloudRequests(); updateStatus('تم إيقاف الصوت.'); return;
+    case 'cancel': stopSpeaking(); cancelCloudRequests(); updateStatus('تم الإلغاء.'); return;
+    case 'recapMine': await listPersonal(); return;
+    case 'exportMine': await exportPersonal(); return;
+    case 'privacyInfo': speakPrivacyInfo(); return;
+    case 'delAllMine': await deleteAllPersonalFlow(); return;
+    case 'torchOn': torchManualOverride = true; await applyTorch(true, false, false); return;
+    case 'torchOff': torchManualOverride = true; await applyTorch(false, false, false); return;
+    case 'navOn': setNavMode(true, true); return;
+    case 'navOff': setNavMode(false, true); return;
+    case 'repeat': repeatLast(); return;
+    case 'read': await readTextSmart(); return;
+    case 'currency': await recognizeEgyptianCurrency(); return;
+    case 'color': await readColorAndMatchAction(); return;
+    case 'distance': await measureDistanceNow(); return;
+    case 'sonar': await runBatSonarProbe(); return;
+    case 'translate': await translateLastTextToArabic(); return;
+    case 'modeWalk': setLifeMode('walk'); return;
+    case 'modeHome': setLifeMode('home'); return;
+    case 'modeClothes': setLifeMode('clothes'); return;
+    case 'modeGrooming': setLifeMode('grooming'); return;
+    case 'identify': await identifyPersonal(); return;
+    case 'teach': await teachPersonal(); return;
+    case 'listMine': await listPersonal(); return;
+    case 'listGeneral': await listGeneral(); return;
+    case 'delMine': await deletePersonalFlow(cmd.target); return;
+    case 'verify': if (!(await verifyPersonal(cmd.target))) await captureAndAnalyze(cmd.question); return;
+    case 'find': await findObjectLive(cmd.target); return;
+    case 'question': await captureAndAnalyze(cmd.question); return;
+  }
+}
+
+async function translateLastTextToArabic() {
+  if (isProcessing) return;
+  if (!lastRecognizedText) { const m = 'اقرأ نصاً إنجليزياً أولاً ثم ترجمه.'; updateStatus(m); speak(m); return; }
+  const src = lastRecognizedText.trim();
+  if (!/[A-Za-z]{2}/.test(src)) { const m = 'النص الأخير ليس إنجليزياً.'; updateStatus(m); speak(m); return; }
+  if (!window.confirm('هل توافق على إرسال النص للترجمة عبر الإنترنت؟')) return;
+  isProcessing = true;
+  try {
+    updateStatus('جارٍ الترجمة...');
+    const chunks = src.match(/[\s\S]{1,420}/g) || [src], out = [];
+    for (const ch of chunks) {
+      const r = await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ar&dt=t&q=' + encodeURIComponent(ch));
+      const p = await r.json(); if (Array.isArray(p?.[0])) out.push(p[0].map(x => x?.[0] || '').join(''));
+    }
+    const msg = 'الترجمة: ' + out.join(' ').trim(); lastDescription = msg; updateStatus(msg); speak(msg);
+  } catch (e) { updateStatus('تعذرت الترجمة.'); speak('تعذرت الترجمة.'); }
+  finally { isProcessing = false; }
+}
+
+function updateSettingsStatus(msg, announce) { if (settingsStatus) settingsStatus.textContent = msg; if (announce) speak(msg); }
+function speakSetupGuide() {
+  speak('مرحباً بك في سند. يعمل التطبيق مجاناً بالكامل دون بطاقة بنكية. لإعداد وطواط الظلام بأقصى دقة في كشف الحوائط والأبواب المغلقة، وجّه الهاتف لمساحة مفتوحة واضغط زر معايرة الفضاء المفتوح في الإعدادات. ثم اضغط ابدأ الآن.');
+}
+
+async function verifyKeyActuallyGenerates(p, key, model) {
+  if (p === 'openrouter') {
+    const r = await fetch('https://openrouter.ai/api/v1/auth/key', { headers: { 'Authorization': 'Bearer ' + key }, cache: 'no-store' });
+    if (!r.ok) throw new Error('مفتاح OpenRouter غير صحيح.');
+    return;
+  }
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent';
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify({ contents: [{ parts: [{ text: 'قل تم' }] }], generationConfig: { maxOutputTokens: 8 } }) });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d?.error?.message || ('رفض المزود المفتاح (HTTP ' + r.status + ')')); }
+}
+
+async function saveSettings(event) {
+  if (event?.preventDefault) event.preventDefault();
+  if (isVerifyingApiKey) return;
+  const px = String(proxyUrlInput.value || '').trim().replace(/\/$/, ''), p = providerSelect.value || 'gemini', key = String(apiKeyInput.value || '').trim(), model = String(modelInput.value || '') || PROVIDERS[p].defaultModel;
+  if (!px && !key) { updateSettingsStatus('لم تُدخل رابط خادم ولا مفتاحاً؛ اضغط «ابدأ الآن» للعمل بالذكاء المحلي المجاني.', true); return; }
+  isVerifyingApiKey = true; saveButton.disabled = true; saveButton.textContent = 'جارٍ التحقق الفعلي...';
+  try {
+    if (key && !px) await verifyKeyActuallyGenerates(p, key, model);
+    proxyUrl = px; apiKey = key; provider = p; modelName = model;
+    try {
+      if (rememberKeyCheckbox.checked) {
+        if (px) localStorage.setItem(LS_PROXY, px); else localStorage.removeItem(LS_PROXY);
+        if (key) { localStorage.setItem(LS_KEY, key); sessionStorage.removeItem(SS_KEY); } else { localStorage.removeItem(LS_KEY); sessionStorage.removeItem(SS_KEY); }
+      } else if (key) sessionStorage.setItem(SS_KEY, key);
+      writeLS(LS_PROVIDER, provider); writeLS(LS_MODEL, model);
+    } catch (e) {}
+    updateSettingsStatus('تم التحقق والتفعيل بنجاح!', true); await startApp(true);
+  } catch (err) { updateSettingsStatus(err.message || 'تعذر التحقق.', true); }
+  finally { isVerifyingApiKey = false; saveButton.disabled = false; saveButton.textContent = 'فحص وتفعيل العيون الكاملة'; }
+}
+
+async function startFreeMode() { await startApp(true); }
+function openSettings() {
+  stopSpeaking(); stopVoiceRecognition(); stopLiveMonitoring(); stopCamera();
+  proxyUrlInput.value = proxyUrl; apiKeyInput.value = apiKey; providerSelect.value = provider;
+  populateModelsForProvider(); modelInput.value = PROVIDERS[provider].models[modelName] ? modelName : PROVIDERS[provider].defaultModel;
+  updateSonarCalStatusText(); mainScreen.classList.add('hidden'); settingsScreen.classList.remove('hidden');
+  setTimeout(() => document.getElementById('settings-heading').focus(), 100);
+}
+function forgetSavedKey() {
+  try { localStorage.removeItem(LS_KEY); sessionStorage.removeItem(SS_KEY); localStorage.removeItem(LS_PROXY); localStorage.removeItem('gemini_api_key'); } catch (e) {}
+  apiKey = ''; proxyUrl = DEFAULT_PUBLIC_PROXY_URL; apiKeyInput.value = ''; proxyUrlInput.value = proxyUrl;
+  updateSettingsStatus('تم حذف الإعدادات الشخصية. الحماية المحلية مستمرة مجاناً.', true);
+}
+async function keepScreenAwake() { try { if ('wakeLock' in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } } catch (e) {} }
+
+async function startApp(fromUserGesture) {
+  settingsScreen.classList.add('hidden'); mainScreen.classList.remove('hidden');
+  ensureAudioContext(); initOrientationSensor();
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+  loadInstalledPacks().catch(() => {});
+  facingMode = lifeMode === 'grooming' ? 'user' : 'environment';
+  await startCamera(); keepScreenAwake();
+  if (localScanEnabled) initLocalObjectEngine();
+  setLifeMode(lifeMode, true); setNavMode(navModeEnabled, false); startLiveMonitoring();
+  const msg = hasCloudVision() ? 'سند جاهز بالعيون الكاملة. الوضع: ' + LIFE_MODES[lifeMode].title + '.' : 'سند جاهز مجاناً محلياً. الوضع: ' + LIFE_MODES[lifeMode].title + '.';
+  updateStatus(msg); hideRiskIndicator(); if (fromUserGesture) speak(msg);
+}
+
+
+/* ============================================================================
+   أشيائي (V20.4): تعليم الهاتف أشياء شخصية — كله على الهاتف، لا يُرسل شيء.
+   النموذج: DINOv2-small (Xenova/dinov2-small عبر Transformers.js) لاستخراج بصمة رقمية
+   للصورة، ثم مقارنة بالأقرب (cosine). تُخزَّن البصمات فقط (لا الصور) في IndexedDB.
+   الحدود أدناه قيم ابتدائية تحتاج معايرة على أشياء حقيقية.
+============================================================================ */
+const PERSONAL_MIN_SIM = 0.55, PERSONAL_MARGIN = 0.05, PERSONAL_LOOKALIKE = 0.85, PERSONAL_MAX_ITEMS = 500, PERSONAL_MAX_SHOTS = 6;
+let personalExtractor = null, personalLoading = null, personalItems = null;
+
+/* ============================================================================
+   المعرفة العامة (حزم): مخزن منفصل تماماً عن «أشيائي».
+   - الخاص: IndexedDB مفتاح 'items' (يعلّمه المستخدم، لا يغادر الهاتف).
+   - العام: IndexedDB مفتاح 'packs' (حزم بصمات تُبنى خارجياً بأداة build_pack.html، للقراءة فقط).
+   الحزمة لا تُعدّل أشياء المستخدم، وحذف الحزم لا يمسّ أشياءه، والعكس.
+   حدود التشابه ابتدائية وتحتاج معايرة على صور حقيقية.
+============================================================================ */
+const GENERAL_MIN_SIM = 0.55, GENERAL_MARGIN = 0.04;
+const PACK_MODEL_ID = 'Xenova/dinov2-small:q8', PACK_DIM = 768, PACK_MAX_BYTES = 15 * 1024 * 1024;
+const PACK_MAX_VECS = 8; // يطابق MAX_PROTOS في build_pack.html؛ غيّر القيمتين معاً دائماً
+const PACK_KINDS = ['hazard', 'place', 'object', 'background'];
+let installedPacks = null, generalClasses = [];
+
+function packClean(s, max) { return String(s || '').replace(/<[^>]*>/g, '').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, max || 60); }
+function packBytes(b64) { const s = atob(b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
+function decodePackVec(e) {
+  if (!e || typeof e.q !== 'string' || !Number.isFinite(e.s) || e.s <= 0) throw new Error('بصمة تالفة');
+  const b = packBytes(e.q); if (b.length !== PACK_DIM) throw new Error('بُعد البصمة لا يطابق');
+  const out = new Float32Array(PACK_DIM);
+  for (let i = 0; i < PACK_DIM; i++) out[i] = (b[i] > 127 ? b[i] - 256 : b[i]) * e.s;
+  return normVec(out);
+}
+function validatePack(p) {
+  if (!p || p.format !== 1 || p.model !== PACK_MODEL_ID || p.dim !== PACK_DIM || !Array.isArray(p.classes)) throw new Error('حزمة غير متوافقة مع نموذج التطبيق');
+  const classes = [];
+  for (const c of p.classes.slice(0, 400)) {
+    const name = packClean(c && c.name, 60); if (!name || !Array.isArray(c.vecs) || !c.vecs.length) continue;
+    const vecs = [];
+    for (const e of c.vecs.slice(0, PACK_MAX_VECS)) { try { vecs.push(decodePackVec(e)); } catch (err) {} }
+    if (vecs.length) classes.push({ name, kind: PACK_KINDS.includes(c.kind) ? c.kind : 'object', vecs });
+  }
+  if (!classes.length) throw new Error('الحزمة فارغة أو تالفة');
+  return { id: packClean(p.id, 60) || 'pack', name: packClean(p.name, 60) || 'حزمة', version: packClean(p.version, 30) || '0', classes };
+}
+function rebuildGeneralClasses() {
+  generalClasses = [];
+  for (const p of (installedPacks || [])) for (const c of p.classes) generalClasses.push({ name: c.name, kind: c.kind, vecs: c.vecs, pack: p.id });
+}
+async function loadInstalledPacks() {
+  if (!installedPacks) {
+    const r = await idbGetStrict('packs');
+    if (!r.ok) return []; // فشلت القراءة: لا نخزّن قائمة فارغة في الذاكرة حتى لا تُكتب فوق الحزم المحفوظة
+    installedPacks = r.value || []; rebuildGeneralClasses();
+  }
+  return installedPacks;
+}
+// التثبيت ذرّي: نجهّز نسخة جديدة، نحفظها فعلياً في IndexedDB، ثم فقط نعتمدها في الذاكرة. عند الفشل لا يتغير شيء ونرمي خطأ صريحاً.
+async function installPack(obj) {
+  const v = validatePack(obj), cur = await loadInstalledPacks();
+  if (!installedPacks) throw new Error('تعذرت قراءة الحزم المثبتة؛ لم أكتب فوقها.');
+  const next = cur.filter(p => p.id !== v.id); next.push(v);
+  if (!(await idbSet('packs', next))) throw new Error('تعذر حفظ الحزمة على الهاتف (غالباً المساحة ممتلئة)؛ لم تُثبَّت.');
+  installedPacks = next; rebuildGeneralClasses();
+  return { pack: v, saved: true };
+}
+function rankPool(q, pool) {
+  return pool.map(c => ({ name: c.name, kind: c.kind, score: Math.max(...c.vecs.map(v => dotVec(q, v))) })).sort((a, b) => b.score - a.score);
+}
+function decideGeneral(q, pool) {
+  const r = rankPool(q, pool), best = r[0], second = r[1];
+  if (!best || best.score < GENERAL_MIN_SIM || best.kind === 'background') return { kind: 'unknown', r };
+  const margin = best.kind === 'hazard' ? GENERAL_MARGIN * 2 : GENERAL_MARGIN;
+  if (second && best.score - second.score < margin && second.score >= GENERAL_MIN_SIM && second.kind !== 'background') return { kind: 'ambiguous', a: best.name, b: second.name, r };
+  return { kind: 'match', name: best.name, cls: best, r };
+}
+function generalSpeech(d) {
+  const k = d.cls && d.cls.kind;
+  if (k === 'hazard') return 'تنبيه محتمل: أظن أن أمامك ' + d.name + '. هذا تخمين بصري؛ تأكد بعصاك.';
+  if (k === 'place') return 'أظنك عند ' + d.name + '. هذا تخمين بصري.';
+  return 'هذا من المعرفة العامة: أظنه ' + d.name + '.';
+}
+const LS_PACKS_URL = 's3aed_packs_manifest_url', DEFAULT_PACKS_MANIFEST_URL = './packs/manifest.json';
+const packsUrlInput = document.getElementById('packs-url-input');
+const packsStatus = document.getElementById('packs-status');
+const packsListEl = document.getElementById('packs-list');
+const importPackInput = document.getElementById('import-pack-input');
+const updatePacksBtn = document.getElementById('update-packs-btn');
+packsUrlInput.value = readLS(LS_PACKS_URL, DEFAULT_PACKS_MANIFEST_URL);
+function setPacksStatus(m) { packsStatus.textContent = m; updateSettingsStatus(m, true); }
+async function renderPacksList() {
+  const packs = await loadInstalledPacks();
+  packsListEl.innerHTML = '';
+  if (!packs.length) { const li = document.createElement('li'); li.textContent = 'لا توجد حزم مثبتة.'; packsListEl.appendChild(li); return; }
+  for (const p of packs) { const li = document.createElement('li'); li.textContent = p.name + ' — إصدار ' + p.version + ' — ' + p.classes.length + ' صنف'; packsListEl.appendChild(li); }
+}
+function resolvePackUrl(u, base) {
+  const url = new URL(u, base || location.href);
+  const local = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && local) && url.origin !== location.origin) throw new Error('الرابط يجب أن يكون HTTPS');
+  return url;
+}
+async function fetchJsonLimited(url) {
+  const r = await fetch(url, { cache: 'no-store' });
+  if (!r.ok) throw new Error('تعذر التنزيل (HTTP ' + r.status + ')');
+  const len = Number(r.headers.get('content-length') || 0);
+  if (len > PACK_MAX_BYTES) throw new Error('الملف كبير جداً');
+  const txt = await r.text();
+  if (txt.length > PACK_MAX_BYTES) throw new Error('الملف كبير جداً');
+  return JSON.parse(txt);
+}
+async function updatePacksFromManifest() {
+  const raw = String(packsUrlInput.value || '').trim();
+  if (!raw) { setPacksStatus('أدخل رابط فهرس الحزم أولاً، أو استورد ملف حزمة من هاتفك.'); return; }
+  updatePacksBtn.disabled = true;
+  try {
+    const murl = resolvePackUrl(raw);
+    setPacksStatus('جارٍ فحص التحديثات...');
+    const man = await fetchJsonLimited(murl.href);
+    if (!man || !Array.isArray(man.packs)) throw new Error('الفهرس غير صالح');
+    if (!man.packs.length) { writeLS(LS_PACKS_URL, raw); setPacksStatus('الفهرس سليم لكن لا توجد حزم منشورة فيه بعد.'); return; }
+    writeLS(LS_PACKS_URL, raw);
+    await loadInstalledPacks();
+    let updated = 0, current = 0, failed = 0;
+    for (const entry of man.packs.slice(0, 20)) {
+      try {
+        const have = (installedPacks || []).find(p => p.id === packClean(entry.id, 60));
+        if (have && have.version === packClean(entry.version, 30)) { current++; continue; }
+        const pack = await fetchJsonLimited(resolvePackUrl(entry.url, murl.href).href);
+        const res = await installPack(pack);
+        if (res.saved) updated++; else failed++;
+      } catch (e) { failed++; }
+    }
+    await renderPacksList();
+    setPacksStatus('تم: ' + updated + ' محدّثة، ' + current + ' حديثة أصلاً' + (failed ? ('، وفشل ' + failed) : '') + '. بعدها تعمل بلا إنترنت.');
+  } catch (e) { setPacksStatus('تعذر التحديث: ' + (e && e.message ? e.message : 'تحقق من الرابط والإنترنت')); }
+  finally { updatePacksBtn.disabled = false; }
+}
+importPackInput.addEventListener('change', async () => {
+  const f = importPackInput.files && importPackInput.files[0]; if (!f) return;
+  try {
+    if (f.size > PACK_MAX_BYTES) throw new Error('الملف كبير جداً');
+    const res = await installPack(JSON.parse(await f.text()));
+    await renderPacksList();
+    setPacksStatus('تم تثبيت «' + res.pack.name + '» (' + res.pack.classes.length + ' صنف).');
+  } catch (e) { setPacksStatus('تعذر الاستيراد: ' + (e && e.message ? e.message : 'ملف غير صالح')); }
+  importPackInput.value = '';
+});
+async function clearInstalledPacks() {
+  if (!window.confirm('حذف كل حزم المعرفة العامة؟ أشياؤك الخاصة لن تُحذف.')) return;
+  await loadInstalledPacks();
+  const ok = await idbSet('packs', []);
+  if (ok) { installedPacks = []; rebuildGeneralClasses(); }
+  await renderPacksList();
+  setPacksStatus(ok ? 'حُذفت الحزم العامة. أشياؤك الخاصة سليمة.' : 'تعذر الحذف من التخزين؛ بقيت الحزم كما هي.');
+}
+renderPacksList();
+
+async function listGeneral() {
+  const packs = await loadInstalledPacks();
+  const m = packs.length
+    ? ('المعرفة العامة المثبتة: ' + packs.map(p => p.name + ' (' + p.classes.length + ' صنف)').join('، ') + '.')
+    : 'لا توجد حزمة معرفة عامة مثبتة. نزّلها من الإعدادات.';
+  updateStatus(m); speak(m);
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function idbOpen() { return new Promise((res, rej) => { const q = indexedDB.open('sanad_personal', 1); q.onupgradeneeded = () => q.result.createObjectStore('kv'); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+async function idbGet(k) { try { const db = await idbOpen(); return await new Promise((res, rej) => { const r = db.transaction('kv').objectStore('kv').get(k); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); } catch (e) { return undefined; } }
+// الكتابة تُعد ناجحة فقط عند اكتمال المعاملة فعلاً (oncomplete)؛ الإجهاض (مثل امتلاء التخزين) يُرفض صراحةً ولا يُترك معلّقاً.
+async function idbSet(k, v) { try { const db = await idbOpen(); await new Promise((res, rej) => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = res; t.onerror = () => rej(t.error); t.onabort = () => rej(t.error || new Error('aborted')); }); return true; } catch (e) { return false; } }
+// قراءة صارمة: تُرجع {ok:false} عند فشل القراءة نفسها، كي لا نخلط «لا بيانات» بـ«تعذرت القراءة» فنكتب فوق بيانات سليمة.
+async function idbGetStrict(k) { try { const db = await idbOpen(); return await new Promise((res, rej) => { const r = db.transaction('kv').objectStore('kv').get(k); r.onsuccess = () => res({ ok: true, value: r.result }); r.onerror = () => rej(r.error); }); } catch (e) { return { ok: false }; } }
+let personalLoadFailed = false, idSeq = 0;
+function newItemId() { return 'i' + Date.now().toString(36) + (idSeq++).toString(36) + Math.random().toString(36).slice(2, 6); }
+async function loadPersonalItems() {
+  if (!personalItems) {
+    const r = await idbGetStrict('items');
+    if (!r.ok) { personalLoadFailed = true; return []; }
+    personalLoadFailed = false; personalItems = r.value || [];
+    // ترحيل: كل شيء قديم بلا معرّف يأخذ معرّفاً ثابتاً مستقلاً عن موضعه في القائمة (البصمات والأسماء لا تتغير)
+    let changed = false;
+    for (const it of personalItems) { if (!it.id) { it.id = newItemId(); changed = true; } }
+    if (changed) idbSet('items', personalItems); // فشل هذه الكتابة غير ضار: يُعاد الترحيل عند الفتح التالي
+  }
+  return personalItems;
+}
+// مساحة التخزين المتبقية على الهاتف (تقديرية من المتصفح؛ قد لا تتوفر). null = غير معروف.
+async function storageHeadroom() {
+  try {
+    if (!navigator.storage || !navigator.storage.estimate) return null;
+    const e = await navigator.storage.estimate();
+    if (!e || !e.quota) return null;
+    return { free: e.quota - (e.usage || 0), ratio: (e.usage || 0) / e.quota };
+  } catch (err) { return null; }
+}
+
+function normVec(v) { let s = 0; for (let i = 0; i < v.length; i++) s += v[i] * v[i]; s = Math.sqrt(s) || 1; const o = new Float32Array(v.length); for (let i = 0; i < v.length; i++) o[i] = v[i] / s; return o; }
+function dotVec(a, b) { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; }
+function rankPersonal(q, items) {
+  return items.map(it => ({ name: it.name, score: Math.max(...it.vecs.map(v => dotVec(q, v))) })).sort((a, b) => b.score - a.score);
+}
+function decidePersonal(q, items) {
+  const r = rankPersonal(q, items), best = r[0], second = r[1];
+  if (!best || best.score < PERSONAL_MIN_SIM) return { kind: 'unknown', r };
+  const margin = (MED_RE.test(best.name) || (second && MED_RE.test(second.name))) ? PERSONAL_MARGIN * 2.4 : PERSONAL_MARGIN;
+  if (second && best.score - second.score < margin && second.score >= PERSONAL_MIN_SIM) return { kind: 'ambiguous', a: best.name, b: second.name, r };
+  return { kind: 'match', name: best.name, r };
+}
+
+function speakWait(text) {
+  return new Promise(res => {
+    if (!('speechSynthesis' in window)) return res();
+    try {
+      window.speechSynthesis.cancel(); assistantSpeaking = true;
+      const u = new SpeechSynthesisUtterance(text); u.lang = arabicVoice ? arabicVoice.lang : 'ar-EG'; if (arabicVoice) u.voice = arabicVoice;
+      const done = () => { assistantSpeaking = false; res(); };
+      u.onend = done; u.onerror = done; setTimeout(done, Math.min(30000, 2000 + text.length * 110));
+      window.speechSynthesis.speak(u);
+    } catch (e) { assistantSpeaking = false; res(); }
+  });
+}
+function listenOnce(ms = 8000) {
+  return new Promise(async res => {
+    const R = getSpeechRecognitionConstructor();
+    if (!R) { const t = window.prompt('اكتب الإجابة:'); return res(t ? t.trim() : ''); }
+    let done = false; const fin = t => { if (done) return; done = true; isListening = false; try { inst.stop(); } catch (e) {} res(t || ''); };
+    const inst = new R(); inst.lang = 'ar-EG'; inst.continuous = false; inst.interimResults = false;
+    inst.onresult = ev => fin(ev.results?.[0]?.[0]?.transcript || ''); inst.onerror = () => fin(''); inst.onend = () => fin('');
+    // النغمة تُعزف عند بدء الميكروفون فعلياً (وليس قبله) حتى تعني "تكلّم الآن"
+    inst.onstart = () => { isListening = true; playMicReadyTone(); vibrate([40, 50, 40]); };
+    stopVoiceRecognition();
+    await sleep(350);
+    try { inst.start(); } catch (e) { fin(''); } setTimeout(() => fin(''), ms);
+  });
+}
+function playMicReadyTone() {
+  const ctx = ensureAudioContext(); if (!ctx) return;
+  try {
+    [660, 990].forEach((f, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain(), t0 = ctx.currentTime + i * 0.14;
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.001, t0); g.gain.exponentialRampToValueAtTime(0.2, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.12);
+      o.connect(g); g.connect(ctx.destination); o.start(t0); o.stop(t0 + 0.13);
+    });
+  } catch (e) {}
+}
+let personalAmbiguous = null;
+function lev(a, b) { const m = a.length, n = b.length; if (!m) return n; if (!n) return m; let p = Array.from({ length: n + 1 }, (_, k) => k); for (let i = 1; i <= m; i++) { const c = [i]; for (let k = 1; k <= n; k++) c[k] = Math.min(p[k] + 1, c[k - 1] + 1, p[k - 1] + (a[i - 1] === b[k - 1] ? 0 : 1)); p = c; } return p[n]; }
+function nameKey(s) { return normalizeArabicCommand(s).replace(/[ءئؤ]/g, '').split(' ').map(w => w.replace(/^ال(?=.{2})/, '').replace(/[هة]$/, '')).filter(Boolean).join(' '); }
+// يرجع الشيء فقط إن كان التطابق وحيداً؛ إن تساوى أكثر من شيء يضع أسماءهم في personalAmbiguous ويرجع null.
+function personalCandidates(items, raw) {
+  const q = nameKey(raw); if (!q || !items || !items.length) return [];
+  const keyed = items.map(it => ({ it, k: nameKey(it.name) }));
+  const tiers = [
+    keyed.filter(x => x.k === q),
+    keyed.filter(x => x.k.length >= 2 && q.length >= 2 && (x.k.includes(q) || q.includes(x.k))),
+    (() => { const sc = keyed.map(x => ({ x, d: lev(q, x.k) / Math.max(q.length, x.k.length) })).filter(s => s.d <= 0.34).sort((a, b) => a.d - b.d); return sc.length ? sc.filter(s => s.d - sc[0].d < 0.05).map(s => s.x) : []; })()
+  ];
+  for (const tier of tiers) if (tier.length) return tier.map(x => x.it);
+  return [];
+}
+function matchPersonalByName(items, raw) {
+  personalAmbiguous = null;
+  const c = personalCandidates(items, raw);
+  if (c.length === 1) return c[0];
+  if (c.length > 1) personalAmbiguous = c.map(x => x.name);
+  return null;
+}
+function pickCandidate(text, cands) {
+  const n = normalizeArabicCommand(text); if (!n) return null;
+  const ORD = [['الاول', 'الاولي', 'واحد', '1'], ['الثاني', 'التاني', 'اثنين', 'اتنين', '2'], ['الثالث', 'التالت', 'ثلاثه', 'تلاته', '3'], ['الرابع', 'اربعه', '4'], ['الخامس', 'خمسه', '5']];
+  const words = n.split(' ');
+  for (let i = 0; i < Math.min(cands.length, ORD.length); i++) if (ORD[i].some(w => words.includes(w))) return cands[i];
+  const q = nameKey(text), hits = cands.filter(c => nameKey(c.name) === q);
+  return hits.length === 1 ? hits[0] : null;
+}
+const YES_WORDS = ['نعم', 'ايوه', 'ايوا', 'اه', 'تمام', 'صح', 'احفظ', 'موافق', 'ماشي'];
+function isYes(t) { const n = normalizeArabicCommand(t); return YES_WORDS.map(normalizeArabicCommand).some(w => n === w || n.startsWith(w + ' ')); }
+
+async function ensurePersonalModel() {
+  if (personalExtractor) return personalExtractor;
+  if (personalLoading) return personalLoading;
+  personalLoading = (async () => {
+    try {
+      updateStatus('جارٍ تجهيز نموذج التعرف على أشيائك (مرة واحدة، يلزم إنترنت)...');
+      const mod = await loadTransformersEngineFixed();
+      personalExtractor = await mod.pipeline('image-feature-extraction', 'Xenova/dinov2-small', { device: 'wasm', dtype: 'q8' });
+      return personalExtractor;
+    } catch (e) { personalExtractor = null; updateStatus('تعذر تحميل النموذج: ' + (e?.message || '')); return null; }
+    finally { personalLoading = null; }
+  })();
+  return personalLoading;
+}
+async function embedFrame(crop) {
+  captureFrame(crop ? 640 : 320, 0.9);
+  let srcCanvas = canvas;
+  if (crop) {
+    const cw = Math.max(1, Math.round(canvas.width * (crop[2] - crop[0]))), ch = Math.max(1, canvas.height);
+    const c2 = document.createElement('canvas'); c2.width = cw; c2.height = ch;
+    c2.getContext('2d').drawImage(canvas, Math.round(canvas.width * crop[0]), 0, cw, ch, 0, 0, cw, ch);
+    srcCanvas = c2;
+  }
+  const out = await personalExtractor(srcCanvas.toDataURL('image/jpeg', 0.9));
+  const dims = out.dims, D = dims[dims.length - 1], N = dims.length >= 3 ? dims[dims.length - 2] : 1, d = out.data;
+  const cls = normVec(d.slice(0, D)), mean = new Float32Array(D);
+  if (N > 1) { for (let t = 1; t < N; t++) for (let i = 0; i < D; i++) mean[i] += d[t * D + i] / (N - 1); }
+  const both = new Float32Array(2 * D); both.set(cls, 0); both.set(normVec(N > 1 ? mean : cls), D);
+  return normVec(both);
+}
+const MED_RE = /(دواء|دوا|حبوب|قرص|اقراص|شراب|علاج|حقن|مرهم|قطره|كبسول)/;
+
+async function teachPersonal() {
+  if (isProcessing) return; isProcessing = true; hideRiskIndicator();
+  try {
+    const items = await loadPersonalItems();
+    if (personalLoadFailed) { await speakWait('تعذرت قراءة أشيائك المحفوظة، ولن أحفظ شيئاً جديداً حتى لا أمحو ما عندك. أغلق التطبيق وافتحه من جديد.'); return; }
+    const exists0 = items.length;
+    if (exists0 >= PERSONAL_MAX_ITEMS) { await speakWait('وصلت للحد الأقصى وهو ' + PERSONAL_MAX_ITEMS + ' شيء. احذف شيئاً أولاً.'); return; }
+    const room = await storageHeadroom();
+    if (room && room.free < 20 * 1024 * 1024) { await speakWait('مساحة التخزين في الهاتف شبه ممتلئة، ولا أستطيع حفظ أشياء جديدة. أفرغ مساحة من الهاتف ثم أعد المحاولة.'); return; }
+    let spaceNote = '';
+    if (room && room.ratio > 0.8) spaceNote = ' تنبيه: ذاكرة الهاتف قاربت الامتلاء.';
+    else if (exists0 >= Math.floor(PERSONAL_MAX_ITEMS * 0.9)) spaceNote = ' تنبيه: اقتربت من الحد الأقصى لعدد الأشياء، وبقي ' + (PERSONAL_MAX_ITEMS - exists0) + ' فقط.';
+    if (!(await ensurePersonalModel())) { speak('تعذر تجهيز النموذج. تأكد من الإنترنت وحاول مرة أخرى.'); return; }
+    if (spaceNote) await speakWait(spaceNote.trim());
+    await speakWait('ضع الشيء أمام الكاميرا على بعد شبر. سأصوره أربع مرات، حرّكه قليلاً بين كل مرة.');
+    const shots = []; let tries = 0;
+    while (shots.length < 4 && tries++ < 10) {
+      await sleep(1400); const q = probeFrameQuality();
+      if (!q || q.isLensCovered || q.isVeryDark || q.isFlat) { await speakWait(q?.isVeryDark ? 'المكان مظلم.' : 'الصورة غير واضحة، ثبّت الشيء وقرّبه من الضوء.'); continue; }
+      playAckTone(); vibrate(30); shots.push(await embedFrame());
+    }
+    if (shots.length < 4) { await speakWait('لم أتمكن من تصوير الشيء بوضوح. حاول في مكان أكثر إضاءة.'); return; }
+    let cs = 0, cn = 0; for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) { cs += dotVec(shots[i], shots[j]); cn++; }
+    if (cs / cn < 0.5) { await speakWait('الصور الأربع مختلفة جداً. ثبّت الشيء وحده أمام الكاميرا وأعد المحاولة.'); return; }
+    let name = '';
+    for (let attempt = 0; attempt < 2 && !name; attempt++) {
+      await speakWait(attempt === 0
+        ? 'تم التصوير. الآن انتظر حتى تسمع نغمتين من الميكروفون، وبعدها فقط انطق اسم هذا الشيء بوضوح.'
+        : 'لم أسمع الاسم. انتظر النغمتين ثم انطق الاسم مرة أخرى.');
+      const heard = (await listenOnce()).trim();
+      if (heard.length >= 2 && heard.length <= 40) name = heard;
+    }
+    if (!name) { await speakWait('لم أسمع الاسم بوضوح. أعد المحاولة من زر علّمني.'); return; }
+    const nn = normalizeArabicCommand(name), exist = items.find(it => normalizeArabicCommand(it.name) === nn);
+    let warn = '';
+    for (const it of items) { if (it === exist) continue; const s = Math.max(...shots.map(v => Math.max(...it.vecs.map(w => dotVec(v, w))))); if (s > PERSONAL_LOOKALIKE) { warn = ' تنبيه: يشبه «' + it.name + '» كثيراً وقد أخلط بينهما.'; break; } }
+    if (!exist && items.length >= PERSONAL_MAX_ITEMS) { await speakWait('وصلت للحد الأقصى من الأشياء. احذف شيئاً أولاً.'); return; }
+    await speakWait('سأحفظه باسم ' + name + '.' + warn + ' انتظر نغمتين من الميكروفون، ثم قل نعم للحفظ أو لا للإلغاء.');
+    if (!isYes(await listenOnce())) { await speakWait('تم الإلغاء.'); return; }
+    const prevVecs = exist ? exist.vecs : null;
+    if (exist) exist.vecs = [...exist.vecs, ...shots].slice(-PERSONAL_MAX_SHOTS * 2); else items.push({ id: newItemId(), name, vecs: shots, taughtAt: Date.now() });
+    const ok = await idbSet('items', items);
+    if (!ok) { // فشلت الكتابة الفعلية: نتراجع في الذاكرة أيضاً كي لا نوهم المستخدم بأن الشيء محفوظ
+      if (exist) exist.vecs = prevVecs; else items.pop();
+      await speakWait('لم أستطع حفظ ' + name + ' في الهاتف. غالباً مساحة التخزين ممتلئة. أفرغ مساحة وأعد المحاولة.');
+    } else await speakWait('تم الحفظ.');
+  } catch (e) { speak('حدث خطأ أثناء التعليم.'); }
+  finally { isProcessing = false; isListening = false; }
+}
+
+async function identifyPersonal() {
+  if (isProcessing) { updateStatus('انتظر انتهاء الطلب الحالي.'); return; }
+  isProcessing = true; hideRiskIndicator(); vibrate(35); playAckTone();
+  try {
+    const items = await loadPersonalItems();
+    await loadInstalledPacks();
+    if (!items.length && !generalClasses.length) { const m = 'لم تعلّمني شيئاً بعد ولا توجد حزمة معرفة عامة. اضغط «علّمني».'; updateStatus(m); speak(m); return; }
+    await withAutoTorchForCapture(async (q) => {
+      if (q?.isVeryDark) { const m = 'المكان مظلم جداً.'; updateStatus(m); speak(m); return; }
+      if (!(await ensurePersonalModel())) { speak('تعذر تجهيز النموذج.'); return; }
+      const v = await embedFrame();
+      // الخاص أولاً (ما علّمه المستخدم بنفسه)، ثم العام (الحزم) — كل منهما بحدوده الخاصة
+      const d = items.length ? decidePersonal(v, items) : { kind: 'unknown', r: [] };
+      const g = generalClasses.length ? decideGeneral(v, generalClasses) : { kind: 'unknown', r: [] };
+      const top2 = r => r.slice(0, 2).map(x => x.name + ' ' + x.score.toFixed(2)).join(' | ') || '—';
+      updateDebug('(معايرة) خاص: ' + top2(d.r) + ' ‖ عام: ' + top2(g.r));
+      let m;
+      if (d.kind === 'match') m = 'أظنه ' + d.name + ' من أشيائك.' + (MED_RE.test(d.name) ? ' هذا تخمين بصري؛ تأكد من الاسم المكتوب قبل الاستعمال.' : '');
+      else if (d.kind === 'ambiguous') m = 'قد يكون ' + d.a + ' أو ' + d.b + ' من أشيائك. لست متأكداً.';
+      else if (g.kind === 'match') m = generalSpeech(g);
+      else if (g.kind === 'ambiguous') m = 'قد يكون ' + g.a + ' أو ' + g.b + ' من المعرفة العامة. لست متأكداً.';
+      else m = 'لا أعرف هذا الشيء. قرّبه وأعد المحاولة أو علّمني إياه.';
+      lastDescription = m; speak(m);
+    });
+  } catch (e) { speak('تعذر التعرف الآن.'); }
+  finally { isProcessing = false; }
+}
+// «ماذا علّمتك؟» / «أشيائي»: يذكر العدد ثم الأسماء على صفحات صغيرة (الأحدث أولاً)، ولا يقرأ القائمة كلها دفعة واحدة.
+async function listPersonal() {
+  if (isProcessing) { updateStatus('انتظر انتهاء الطلب الحالي.'); return; }
+  isProcessing = true; stopVoiceRecognition();
+  let wantDelete = false;
+  try {
+    const items = await loadPersonalItems();
+    if (personalLoadFailed) { await speakWait('تعذرت قراءة أشيائك المحفوظة الآن. أغلق التطبيق وافتحه من جديد.'); return; }
+    if (!items.length) { const m = 'لم تعلّمني شيئاً بعد.'; updateStatus(m); await speakWait(m); return; }
+    const sorted = items.slice().reverse(), n = sorted.length, PAGE = 8;
+    await speakWait('علّمتني ' + n + (n === 1 ? ' شيئاً واحداً' : ' أشياء') + (n > 1 ? '. سأذكرها من الأحدث إلى الأقدم.' : '.'));
+    for (let i = 0; i < n; i += PAGE) {
+      const page = sorted.slice(i, i + PAGE), line = page.map((it, k) => (i + k + 1) + '، ' + it.name).join('. ') + '.';
+      updateStatus(line); await speakWait(line);
+      if (i + PAGE < n) {
+        await speakWait('هل أكمل؟ انتظر نغمتين من الميكروفون ثم قل نعم أو لا.');
+        if (!isYes(await listenOnce(6000))) break;
+      }
+    }
+    await speakWait('هل تريد حذف شيء منها؟ انتظر نغمتين من الميكروفون ثم قل نعم أو لا.');
+    wantDelete = isYes(await listenOnce(6000));
+  } catch (e) { speak('تعذر عرض أشيائك الآن.'); }
+  finally { isProcessing = false; isListening = false; }
+  if (wantDelete) await deletePersonalFlow('');
+}
+// تأكيد الحذف: «احفظ» تُقبل في التعليم لكنها لا تُعد موافقة على الحذف.
+async function confirmDelete(q) {
+  await speakWait(q + ' انتظر نغمتين من الميكروفون ثم قل نعم للحذف أو لا للإلغاء.');
+  const t = await listenOnce();
+  return isYes(t) && !/احفظ/.test(normalizeArabicCommand(t));
+}
+// الحذف يتم بالمعرّف الثابت (id) لا بموضع العنصر في القائمة، وبعد تأكيد صريح، وبلا حذف عند أي التباس.
+async function deletePersonalFlow(nameRaw) {
+  if (isProcessing) { updateStatus('انتظر انتهاء الطلب الحالي.'); return; }
+  isProcessing = true; stopVoiceRecognition();
+  try {
+    const items = await loadPersonalItems();
+    if (personalLoadFailed) { await speakWait('تعذرت قراءة أشيائك المحفوظة، ولن أحذف شيئاً. أغلق التطبيق وافتحه من جديد.'); return; }
+    if (!items.length) { const m = 'لا توجد أشياء محفوظة لحذفها.'; updateStatus(m); speak(m); return; }
+    let target = String(nameRaw || '').trim();
+    for (let attempt = 0; attempt < 2 && !target; attempt++) {
+      await speakWait((attempt ? 'لم أسمع الاسم. ' : 'عندك ' + items.length + (items.length === 1 ? ' شيء واحد. ' : ' أشياء. ')) + 'انتظر نغمتين من الميكروفون، ثم انطق اسم الشيء الذي تريد حذفه. وإن أردت سماع أشيائك قل: ماذا علمتك.');
+      target = (await listenOnce()).trim();
+    }
+    if (!target) { await speakWait('لم أسمع اسماً. لم يُحذف شيء.'); return; }
+    const cands = personalCandidates(items, target);
+    if (!cands.length) { await speakWait('لم أجد شيئاً باسم ' + target + '. لم يُحذف شيء.'); return; }
+    let victim = null;
+    if (cands.length === 1) victim = cands[0];
+    else {
+      const shown = cands.slice(0, 5), ORD = ['الأول', 'الثاني', 'الثالث', 'الرابع', 'الخامس'];
+      await speakWait('وجدت ' + cands.length + ' أشياء قريبة من هذا الاسم' + (cands.length > 5 ? '، وسأذكر أول خمسة فقط' : '') + ': ' + shown.map((c, i) => ORD[i] + '، ' + c.name).join('. ') + '. انتظر نغمتين من الميكروفون ثم قل رقم الشيء أو اسمه كاملاً. ولن أحذف شيئاً إن لم تحدد.');
+      victim = pickCandidate(await listenOnce(), shown);
+      if (!victim) { await speakWait('لم أتأكد من اختيارك. لم يُحذف شيء.'); return; }
+    }
+    const vid = victim.id, vname = victim.name;
+    if (!(await confirmDelete('هل تريد حذف ' + vname + '؟ سأحذف هذا الشيء وحده.'))) { await speakWait('تم الإلغاء. لم يُحذف شيء.'); return; }
+    const idx = items.findIndex(it => it.id === vid);
+    if (idx < 0) { await speakWait('لم أعد أجد هذا الشيء. لم يُحذف شيء.'); return; }
+    const removed = items.splice(idx, 1)[0];
+    if (!(await idbSet('items', items))) {
+      items.splice(idx, 0, removed); // فشلت الكتابة الفعلية: نعيده في الذاكرة كي تبقى الذاكرة مطابقة للمخزَّن
+      const m = 'لم أستطع الحذف من الهاتف، وبقي ' + vname + ' كما هو. حاول مرة أخرى.'; updateStatus(m); await speakWait(m); return;
+    }
+    const m = 'تم حذف ' + vname + '. ' + (items.length ? 'بقي عندك ' + items.length + '.' : 'لم يبق عندك شيء محفوظ.'); updateStatus(m); await speakWait(m);
+  } catch (e) { speak('حدث خطأ أثناء الحذف. لم يُحذف شيء.'); }
+  finally { isProcessing = false; isListening = false; }
+}
+// حذف الكل: تأكيدان متتاليان، ولا يمسّ الحزم العامة.
+async function deleteAllPersonalFlow() {
+  if (isProcessing) { updateStatus('انتظر انتهاء الطلب الحالي.'); return; }
+  isProcessing = true; stopVoiceRecognition();
+  try {
+    const items = await loadPersonalItems();
+    if (personalLoadFailed) { await speakWait('تعذرت قراءة أشيائك المحفوظة، ولن أحذف شيئاً.'); return; }
+    if (!items.length) { await speakWait('لا توجد أشياء محفوظة لحذفها.'); return; }
+    if (!(await confirmDelete('أنت على وشك حذف كل أشيائك وعددها ' + items.length + '. الحزم العامة لن تتأثر.'))) { await speakWait('تم الإلغاء. لم يُحذف شيء.'); return; }
+    if (!(await confirmDelete('تأكيد أخير: لا يمكن التراجع عن حذف الكل. هل أنت متأكد؟'))) { await speakWait('تم الإلغاء. لم يُحذف شيء.'); return; }
+    const snapshot = items.slice(); items.length = 0;
+    if (!(await idbSet('items', items))) { items.push(...snapshot); await speakWait('لم أستطع الحذف من الهاتف، وبقيت أشياؤك كما هي.'); return; }
+    const m = 'تم حذف كل أشيائك.'; updateStatus(m); await speakWait(m);
+  } catch (e) { speak('حدث خطأ أثناء الحذف. لم يُحذف شيء.'); }
+  finally { isProcessing = false; isListening = false; }
+}
+
+/* ===== نسخة احتياطية لأشيائي (V20.8): أسماء + بصمات فقط، بلا صور، على الهاتف. ===== */
+const BACKUP_MAX_BYTES = 60 * 1024 * 1024;
+function f32ToB64(v) { const u = new Uint8Array(v.buffer, v.byteOffset, v.byteLength); let t = ''; for (let i = 0; i < u.length; i += 0x8000) t += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(t); }
+function b64ToF32(b) {
+  if (typeof b !== 'string') throw new Error('بصمة تالفة');
+  const t = atob(b); if (t.length !== PACK_DIM * 4) throw new Error('بُعد البصمة لا يطابق');
+  const u = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) u[i] = t.charCodeAt(i);
+  const f = new Float32Array(u.buffer); let n = 0;
+  for (let i = 0; i < f.length; i++) { if (!Number.isFinite(f[i])) throw new Error('بصمة تالفة'); n += f[i] * f[i]; }
+  if (n < 0.8 || n > 1.2) throw new Error('بصمة غير طبيعية');
+  return normVec(f);
+}
+function setBackupStatus(m) { const el = document.getElementById('personal-backup-status'); if (el) el.textContent = m; updateStatus(m); }
+async function exportPersonal() {
+  try {
+    const items = await loadPersonalItems();
+    if (personalLoadFailed) { const m = 'تعذرت قراءة أشيائك المحفوظة، فلن أصدّر شيئاً الآن.'; setBackupStatus(m); speak(m); return; }
+    if (!items.length) { const m = 'لا توجد أشياء لحفظ نسخة منها.'; setBackupStatus(m); speak(m); return; }
+    let dropped = 0;
+    const out = items.map(it => {
+      const vecs = []; for (const v of it.vecs) { try { if (v && v.length === PACK_DIM) vecs.push(f32ToB64(v instanceof Float32Array ? v : new Float32Array(v))); else dropped++; } catch (e) { dropped++; } }
+      return { id: it.id, name: it.name, taughtAt: it.taughtAt || null, vecs };
+    }).filter(x => x.vecs.length);
+    if (!out.length) { const m = 'لا توجد بصمات سليمة للتصدير.'; setBackupStatus(m); speak(m); return; }
+    const blob = new Blob([JSON.stringify({ format: 1, kind: 'sanad-personal', model: PACK_MODEL_ID, dim: PACK_DIM, exportedAt: new Date().toISOString(), items: out })], { type: 'application/json' });
+    const a = document.createElement('a'), d = new Date().toISOString().slice(0, 10);
+    a.href = URL.createObjectURL(blob); a.download = 'sanad-ashyaei-' + d + '.json';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    const m = 'جهّزت نسخة من ' + out.length + ' شيء، وبدأ تنزيلها على الهاتف. تحقق من مجلد التنزيلات.' + (dropped ? ' تجاهلت ' + dropped + ' بصمة تالفة.' : '');
+    setBackupStatus(m); speak(m);
+  } catch (e) { const m = 'تعذر تجهيز النسخة الاحتياطية.'; setBackupStatus(m); speak(m); }
+}
+// الاستعادة تضيف ولا تمسح: لا يُستبدل شيء موجود، ويُكتب المخزن أولاً ثم تُعتمد الذاكرة.
+async function restorePersonalFromObject(obj) {
+  if (!obj || obj.format !== 1 || obj.kind !== 'sanad-personal' || obj.model !== PACK_MODEL_ID || obj.dim !== PACK_DIM || !Array.isArray(obj.items)) throw new Error('الملف ليس نسخة احتياطية متوافقة مع هذا الإصدار');
+  const items = await loadPersonalItems();
+  if (personalLoadFailed) throw new Error('تعذرت قراءة أشيائك الحالية؛ لم أكتب فوقها');
+  const incoming = []; let bad = 0;
+  for (const e of obj.items.slice(0, PERSONAL_MAX_ITEMS * 2)) {
+    try {
+      const name = packClean(e && e.name, 40); if (!name || !Array.isArray(e.vecs) || !e.vecs.length) { bad++; continue; }
+      const vecs = []; for (const b of e.vecs.slice(0, PERSONAL_MAX_SHOTS * 2)) vecs.push(b64ToF32(b));
+      const id = (typeof e.id === 'string' && /^[\w-]{1,64}$/.test(e.id)) ? e.id : newItemId();
+      incoming.push({ id, name, vecs, taughtAt: Number.isFinite(e.taughtAt) ? e.taughtAt : undefined });
+    } catch (err) { bad++; }
+  }
+  if (!incoming.length) throw new Error('لا توجد أشياء سليمة في الملف');
+  const next = items.map(it => Object.assign({}, it, { vecs: it.vecs.slice() }));
+  let added = 0, merged = 0, skipped = 0;
+  for (const e of incoming) {
+    if (next.some(x => x.id === e.id)) { skipped++; continue; }
+    const nn = normalizeArabicCommand(e.name), same = next.find(x => normalizeArabicCommand(x.name) === nn);
+    if (same) { same.vecs = [...same.vecs, ...e.vecs].slice(-PERSONAL_MAX_SHOTS * 2); merged++; continue; }
+    if (next.length >= PERSONAL_MAX_ITEMS) { skipped++; continue; }
+    next.push(e); added++;
+  }
+  if (added + merged > 0) {
+    if (!(await idbSet('items', next))) throw new Error('تعذر الحفظ على الهاتف (غالباً المساحة ممتلئة)؛ لم يتغير شيء');
+    items.splice(0, items.length, ...next);
+  }
+  return { added, merged, skipped, bad, total: items.length };
+}
+const importPersonalInput = document.getElementById('import-personal-input');
+if (importPersonalInput) importPersonalInput.addEventListener('change', async () => {
+  const f = importPersonalInput.files && importPersonalInput.files[0]; if (!f) return;
+  if (isProcessing) { setBackupStatus('انتظر انتهاء الطلب الحالي ثم أعد المحاولة.'); importPersonalInput.value = ''; return; }
+  isProcessing = true;
+  try {
+    if (f.size > BACKUP_MAX_BYTES) throw new Error('الملف كبير جداً');
+    const r = await restorePersonalFromObject(JSON.parse(await f.text()));
+    const m = 'تمت الاستعادة: أضفت ' + r.added + '، ودمجت ' + r.merged + ' مع أشياء موجودة، وتجاهلت ' + (r.skipped + r.bad) + '. صار عندك ' + r.total + ' شيء.';
+    setBackupStatus(m); speak(m);
+  } catch (e) { const m = 'تعذرت الاستعادة: ' + (e && e.message ? e.message : 'ملف غير صالح'); setBackupStatus(m); speak(m); }
+  finally { isProcessing = false; importPersonalInput.value = ''; }
+});
+function speakPrivacyInfo() {
+  const m = 'أشياؤك وأسماؤها وبصماتها تبقى على هاتفك ولا تُرسل. ما قد يخرج من الهاتف: صوتك عند الأوامر الصوتية، لأن التعرف على الكلام في كروم قد يمر عبر خوادم جوجل. والصورة مع نص سؤالك إن فعّلت العيون السحابية. ونص الترجمة بعد موافقتك. وتنزيل النماذج والمكتبات أول مرة. غير ذلك لا يُرسل شيء.';
+  updateStatus(m); speak(m); lastDescription = m;
+}
+
+// بحث عن شيء شخصي مُعلَّم: يقيس التشابه في ثلثي الصورة (يسار/وسط/يمين) ثم الصورة كاملة.
+async function findPersonalLive(item, generalPool) {
+  const isGeneral = !!generalPool, items = isGeneral ? generalPool : await loadPersonalItems();
+  const minSim = isGeneral ? GENERAL_MIN_SIM : PERSONAL_MIN_SIM;
+  const q = probeFrameQuality();
+  if (q?.isLensCovered) { const m = 'إصبعك يغطي العدسة.'; updateStatus(m); speak(m); return; }
+  if (q?.isVeryDark) { const m = 'المكان مظلم جداً للبحث بالكاميرا.'; updateStatus(m); speak(m); return; }
+  if (!(await ensurePersonalModel())) { speak('تعذر تجهيز النموذج. تأكد من الإنترنت لأول مرة فقط.'); return; }
+  speak('أبحث عن ' + item.name + '. ثبّت الهاتف.');
+  const regions = [
+    { pos: 'على اليسار', crop: [0, 0, 0.42] }, { pos: 'أمامك', crop: [0.29, 0, 0.71] }, { pos: 'على اليمين', crop: [0.58, 0, 1] }, { pos: 'أمامك', crop: null }
+  ];
+  let best = null;
+  for (const r of regions) {
+    const v = await embedFrame(r.crop ? [r.crop[0], 0, r.crop[2], 1] : null);
+    const ranks = isGeneral ? rankPool(v, items) : rankPersonal(v, items), top = ranks[0];
+    if (top && top.name === item.name && top.score >= minSim && (!best || top.score > best.score)) best = { pos: r.pos, score: top.score };
+  }
+  let m;
+  if (best) {
+    playSpatialBeep(sideFromPosition(best.pos), false); vibrate([50, 50, 50]);
+    m = 'أظن أن ' + item.name + ' ' + best.pos + '.' + (MED_RE.test(item.name) ? ' هذا تخمين بصري؛ تأكد من الاسم المكتوب قبل الاستعمال.' : (isGeneral && item.kind === 'hazard' ? ' تأكد بعصاك.' : ''));
+  } else m = 'لم أرَ ' + item.name + ' أمامي الآن. حرّك الهاتف ببطء يميناً ويساراً وأعد البحث.';
+  updateStatus(DEV_MODE && best ? ('(معايرة) ' + best.score.toFixed(2) + ' — ' + m) : m); lastDescription = m; speak(m);
+}
+
+// «هل هذا X؟» — يُرجع false إذا لم يكن X من أشيائه المحفوظة ليُعامل السؤال كسؤال عادي.
+async function verifyPersonal(targetRaw) {
+  const items = await loadPersonalItems(); await loadInstalledPacks();
+  const personalMatch = matchPersonalByName(items, targetRaw);
+  // يجب فحص الالتباس قبل أي استدعاء ثانٍ للمطابقة، لأن كل استدعاء يعيد ضبط personalAmbiguous
+  if (!personalMatch && personalAmbiguous) { const m = 'وجدت عدة أشياء متشابهة: ' + personalAmbiguous.join('، ') + '. قل الاسم كاملاً.'; updateStatus(m); speak(m); return true; }
+  const generalMatch = personalMatch ? null : matchPersonalByName(generalClasses.filter(c => c.kind !== 'background'), targetRaw);
+  const match = personalMatch || generalMatch;
+  if (!match) return false;
+  if (isProcessing) { updateStatus('انتظر انتهاء الطلب الحالي.'); return true; }
+  isProcessing = true;
+  try {
+    await withAutoTorchForCapture(async (q) => {
+      if (q?.isVeryDark) { const m = 'المكان مظلم جداً.'; updateStatus(m); speak(m); return; }
+      if (!(await ensurePersonalModel())) { speak('تعذر تجهيز النموذج.'); return; }
+      const vv = await embedFrame();
+      const d = personalMatch ? decidePersonal(vv, items) : decideGeneral(vv, generalClasses);
+      updateDebug('(معايرة) ' + (personalMatch ? 'خاص: ' : 'عام: ') + d.r.slice(0, 2).map(x => x.name + ' ' + x.score.toFixed(2)).join(' | '));
+      let m;
+      if (d.kind === 'match' && d.name === match.name) m = 'نعم، أظنه ' + match.name + '.' + (MED_RE.test(match.name) ? ' هذا تخمين بصري؛ تأكد من الاسم المكتوب قبل الاستعمال.' : (generalMatch && generalMatch.kind === 'hazard' ? ' تأكد بعصاك.' : ''));
+      else if (d.kind === 'ambiguous' && (d.a === match.name || d.b === match.name)) m = 'قد يكون ' + match.name + ' لكنني لست متأكداً. قرّبه وأعد السؤال.';
+      else if (d.kind === 'match') m = 'لا أظنه ' + match.name + '، بل يشبه ' + d.name + '.';
+      else m = 'لا أظنه ' + match.name + '، ولا أعرف ما هو.';
+      lastDescription = m; speak(m);
+    });
+  } catch (e) { speak('تعذر التحقق الآن.'); }
+  finally { isProcessing = false; }
+  return true;
+}
+
+function repeatLast() { if (lastDescription) { updateStatus(lastDescription); speak(lastDescription); } else { const m = 'لا يوجد وصف سابق بعد.'; updateStatus(m); speak(m); } }
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { stopVoiceRecognition(); stopLiveMonitoring(); stopCamera(); stopSpeaking(); }
+  else if (!mainScreen.classList.contains('hidden')) { startCamera(); startLiveMonitoring(); keepScreenAwake(); }
+});
+window.addEventListener('pagehide', () => { stopVoiceRecognition(); stopLiveMonitoring(); stopCamera(); stopSpeaking(); });
+window.addEventListener('load', () => {
+  try { if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) {}
+  try { const p = new URLSearchParams(location.search).get('proxy'); if (p && /^https:\/\/[a-z0-9.-]+\.(workers|pages)\.dev(\/.*)?$/i.test(p) && window.confirm('سيُرسل التطبيق الصور إلى هذا الخادم: ' + new URL(p).host + ' . هل تثق به؟')) { proxyUrl = p.replace(/\/$/, ''); writeLS(LS_PROXY, proxyUrl); } } catch (e) {}
+  if (hasCloudVision()) { apiKeyInput.value = apiKey; proxyUrlInput.value = proxyUrl; startApp(false); }
+  else setTimeout(() => { document.getElementById('settings-heading').focus(); }, 250);
+});
+</script>
+<script>
+  (function () { var k = 'sanad_preview', el = document.getElementById('preview-check'), on = false;
+    try { on = localStorage.getItem(k) === '1'; } catch (e) {}
+    function ap() { document.body.classList.toggle('preview-off', !on); if (el) el.checked = on; }
+    ap(); if (el) el.addEventListener('change', function () { on = el.checked; try { localStorage.setItem(k, on ? '1' : '0'); } catch (e) {} ap(); });
+  })();
+</script>
+</body>
+</html>

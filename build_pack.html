@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>سند — أداة بناء حزمة معرفة</title>
+<style>
+  body { font-family: system-ui, "Segoe UI", Tahoma, sans-serif; background:#0b1120; color:#e5e7eb; max-width: 860px; margin: 0 auto; padding: 18px; line-height: 1.7; }
+  h1 { color:#5eead4; font-size: 1.4rem; } h2 { color:#93c5fd; font-size: 1.1rem; margin-top: 1.6rem; }
+  input[type=text] { width:100%; padding:10px; border-radius:10px; border:1px solid #374151; background:#111827; color:#fff; box-sizing:border-box; }
+  label { display:block; margin-top: 10px; font-weight: 700; }
+  button { padding:12px 16px; border-radius:12px; border:0; background:#0f766e; color:#fff; font-weight:700; cursor:pointer; margin-top:12px; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .box { background:#111827; border:1px solid #1f2937; border-radius:12px; padding:12px; }
+  pre { white-space: pre-wrap; background:#030712; padding:10px; border-radius:10px; font-size: 12px; direction: rtl; max-height: 320px; overflow:auto; }
+  table { width:100%; border-collapse: collapse; font-size: 13px; } th, td { border-bottom:1px solid #1f2937; padding:6px; text-align:right; }
+  .warn { color:#fde68a; } .bad { color:#fca5a5; } .good { color:#86efac; }
+  code { background:#1f2937; padding:1px 5px; border-radius:5px; direction:ltr; display:inline-block; }
+</style>
+</head>
+<body>
+<h1>أداة بناء حزمة المعرفة المصرية العامة</h1>
+<p>تحوّل مجلدات صور إلى ملف حزمة صغير (بصمات رقمية، لا صور) يمكن تثبيته في تطبيق سند. تعمل كلها في متصفحك؛ الصور لا تُرفع لأي مكان.</p>
+
+<div class="box">
+  <strong>تنظيم المجلدات:</strong> مجلد لكل صنف، واسم المجلد = اسم الصنف كما سينطقه التطبيق.
+  ابدأ الاسم بنوع الصنف اختيارياً:
+  <code>hazard-حفرة في الطريق</code> تنبيه خطر ·
+  <code>place-محطة مترو التحرير</code> مكان ·
+  <code>object-سلة قمامة</code> شيء ·
+  <code>background-خلفية</code> صور «لا شيء مما أعرفه» (لا يُنطق أبداً، وتقلّل الإنذارات الكاذبة).
+  دون بادئة = شيء عادي. يُفضّل 20–50 صورة لكل صنف بكاميرا الهاتف نفسه وبإضاءات وزوايا ومسافات مختلفة، ومن 10 صور لصنف الخلفية فأكثر.
+  <p class="warn">لا تصوّر وجوه أشخاص أو لوحات سيارات.</p>
+</div>
+
+<label for="pack-id">معرّف الحزمة (إنجليزي بلا مسافات):</label>
+<input id="pack-id" type="text" value="egypt-streets" dir="ltr">
+<label for="pack-name">اسم الحزمة (عربي):</label>
+<input id="pack-name" type="text" value="شوارع مصر">
+<label for="pack-version">الإصدار:</label>
+<input id="pack-version" type="text" dir="ltr">
+<label for="folder-input">اختر المجلد الذي يحوي مجلدات الأصناف:</label>
+<input id="folder-input" type="file" webkitdirectory multiple>
+<button id="build-btn" disabled>ابنِ الحزمة</button>
+<button id="download-btn" disabled>نزّل ملف الحزمة</button>
+
+<h2>السجل</h2>
+<pre id="log">ينتظر اختيار مجلد...</pre>
+<h2>الاختبار الذاتي (leave-one-out) — فحص أولي فقط، وليس شرط النشر</h2>
+<div id="report" class="box">لم يُجرَ بعد.</div>
+
+<script>
+const MODEL_ID = 'Xenova/dinov2-small:q8', DIM = 768, MAX_PROTOS = 8, MIN_IMAGES = 3; // MAX_PROTOS يطابق PACK_MAX_VECS في index.html؛ غيّر القيمتين معاً
+const KINDS = ['hazard', 'place', 'object', 'background'];
+const $ = id => document.getElementById(id);
+$('pack-version').value = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+let files = [], extractor = null, builtPack = null;
+const log = m => { $('log').textContent += '\n' + m; $('log').scrollTop = $('log').scrollHeight; };
+
+function normVec(v) { let s = 0; for (let i = 0; i < v.length; i++) s += v[i] * v[i]; s = Math.sqrt(s) || 1; const o = new Float32Array(v.length); for (let i = 0; i < v.length; i++) o[i] = v[i] / s; return o; }
+function dotVec(a, b) { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; }
+
+async function loadExtractor() {
+  if (extractor) return extractor;
+  if (location.protocol === 'file:') throw new Error('افتح هذه الصفحة عبر خادم محلي: في مجلد الملفات نفّذ  python -m http.server 8000  ثم افتح http://localhost:8000/build_pack.html');
+  log('جارٍ تحميل نموذج DINOv2 (مرة واحدة، يحتاج إنترنت)...');
+  const mod = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2');
+  mod.env.allowLocalModels = false; mod.env.useBrowserCache = true;
+  if (mod.env.backends?.onnx?.wasm) { mod.env.backends.onnx.wasm.numThreads = 1; mod.env.backends.onnx.wasm.proxy = false; }
+  // نفس النموذج ونفس dtype ونفس الجهاز كما في التطبيق حتى تتطابق البصمات عددياً
+  extractor = await mod.pipeline('image-feature-extraction', 'Xenova/dinov2-small', { device: 'wasm', dtype: 'q8' });
+  return extractor;
+}
+
+// نفس معالجة التطبيق: أطول ضلع 320، JPEG 0.9، ثم CLS + متوسط الرموز
+async function embedFile(file) {
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  const s = Math.min(1, 320 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(bmp.width * s)); c.height = Math.max(1, Math.round(bmp.height * s));
+  c.getContext('2d', { alpha: false }).drawImage(bmp, 0, 0, c.width, c.height);
+  try { bmp.close(); } catch (e) {}
+  const out = await extractor(c.toDataURL('image/jpeg', 0.9));
+  const dims = out.dims, D = dims[dims.length - 1], N = dims.length >= 3 ? dims[dims.length - 2] : 1, d = out.data;
+  const cls = normVec(d.slice(0, D)), mean = new Float32Array(D);
+  if (N > 1) { for (let t = 1; t < N; t++) for (let i = 0; i < D; i++) mean[i] += d[t * D + i] / (N - 1); }
+  const both = new Float32Array(2 * D); both.set(cls, 0); both.set(normVec(N > 1 ? mean : cls), D);
+  if (both.length !== DIM) { const e = new Error('طول البصمة ' + both.length + ' لا يساوي DIM=' + DIM + ' — النموذج لا يطابق التطبيق. أوقفت البناء.'); e.dimMismatch = true; throw e; }
+  return normVec(both);
+}
+
+function parseClassFolder(folder) {
+  const m = folder.match(/^(hazard|place|object|background)[-_](.+)$/i);
+  return m ? { kind: m[1].toLowerCase(), name: m[2].trim() } : { kind: 'object', name: folder.trim() };
+}
+
+function pickPrototypes(vecs, k) {
+  if (vecs.length <= k) return vecs;
+  let mi = 0, ms = -1;
+  vecs.forEach((v, i) => { let s = 0; vecs.forEach(w => s += dotVec(v, w)); if (s > ms) { ms = s; mi = i; } });
+  const chosen = [mi], maxSim = vecs.map(v => dotVec(v, vecs[mi]));
+  while (chosen.length < k) {
+    let bi = -1, bs = 2;
+    maxSim.forEach((s, i) => { if (!chosen.includes(i) && s < bs) { bs = s; bi = i; } });
+    chosen.push(bi);
+    vecs.forEach((v, i) => { const d = dotVec(v, vecs[bi]); if (d > maxSim[i]) maxSim[i] = d; });
+  }
+  return chosen.map(i => vecs[i]);
+}
+
+function encodeVec(v) {
+  let mx = 0; for (let i = 0; i < v.length; i++) mx = Math.max(mx, Math.abs(v[i]));
+  const s = (mx || 1e-6) / 127, q = new Int8Array(v.length);
+  for (let i = 0; i < v.length; i++) q[i] = Math.max(-127, Math.min(127, Math.round(v[i] / s)));
+  const u = new Uint8Array(q.buffer); let bin = '';
+  for (let i = 0; i < u.length; i += 0x8000) bin += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+  return { s: Number(s.toPrecision(6)), q: btoa(bin) };
+}
+
+$('folder-input').addEventListener('change', e => {
+  files = [...e.target.files].filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|webp)$/i.test(f.name));
+  $('log').textContent = 'تم اختيار ' + files.length + ' صورة.';
+  $('build-btn').disabled = files.length === 0; $('download-btn').disabled = true; builtPack = null;
+});
+
+$('build-btn').addEventListener('click', async () => {
+  $('build-btn').disabled = true; $('download-btn').disabled = true; $('report').textContent = 'جارٍ العمل...';
+  try {
+    // تجميع الصور حسب مجلد الصنف (يدعم مجلدات فرعية مثل hazard-حفرة/ليل/img.jpg)
+    const groups = new Map();
+    for (const f of files) {
+      const parts = (f.webkitRelativePath || f.name).split('/').filter(Boolean);
+      let folder = 'صنف';
+      // ابحث عن أول جزء يطابق نمط الصنف (hazard-... أو place-... إلخ)
+      for (const p of parts) {
+        if (/^(hazard|place|object|background)[-_]/i.test(p)) { folder = p; break; }
+      }
+      // إن لم يوجد، استخدم المجلد الأب المباشر كالسابق
+      if (folder === 'صنف' && parts.length >= 2) folder = parts[parts.length - 2];
+      if (!groups.has(folder)) groups.set(folder, []);
+      groups.get(folder).push(f);
+    }
+    await loadExtractor();
+    const all = []; // { cls, vec }
+    const classes = [];
+    for (const [folder, list] of groups) {
+      const info = parseClassFolder(folder);
+      if (list.length < MIN_IMAGES) { log('⚠ تجاهل «' + folder + '»: ' + list.length + ' صورة فقط (الحد الأدنى ' + MIN_IMAGES + ').'); continue; }
+      log('تضمين «' + folder + '» (' + list.length + ' صورة)...');
+      const vecs = [];
+      for (const f of list) { try { vecs.push(await embedFile(f)); } catch (err) { if (err && err.dimMismatch) throw err; log('  تعذرت صورة: ' + f.name); } }
+      if (vecs.length < MIN_IMAGES) continue;
+      vecs.forEach(v => all.push({ cls: info.name, kind: info.kind, vec: v }));
+      classes.push({ info, vecs });
+    }
+    if (classes.length < 2) throw new Error('يلزم صنفان صالحان على الأقل.');
+
+    // اختبار leave-one-out: أقرب جار بين كل الصور الأخرى
+    const stats = new Map(classes.map(c => [c.info.name, { n: 0, ok: 0, conf: new Map(), okScores: [] }]));
+    for (let i = 0; i < all.length; i++) {
+      let best = null, bs = -2;
+      for (let j = 0; j < all.length; j++) { if (i === j) continue; const s = dotVec(all[i].vec, all[j].vec); if (s > bs) { bs = s; best = all[j]; } }
+      const st = stats.get(all[i].cls); st.n++;
+      if (best.cls === all[i].cls) { st.ok++; st.okScores.push(bs); } else st.conf.set(best.cls, (st.conf.get(best.cls) || 0) + 1);
+    }
+    let html = '<table><tr><th>الصنف</th><th>النوع</th><th>صور</th><th>الدقة</th><th>أكثر التباساً مع</th></tr>';
+    let weak = 0;
+    for (const c of classes) {
+      const st = stats.get(c.info.name), acc = st.ok / st.n;
+      const conf = [...st.conf.entries()].sort((a, b) => b[1] - a[1])[0];
+      const cls = acc >= 0.9 ? 'good' : (acc >= 0.75 ? 'warn' : 'bad'); if (acc < 0.75) weak++;
+      html += '<tr><td>' + escapeHtml(c.info.name) + '</td><td>' + c.info.kind + '</td><td>' + st.n + '</td><td class="' + cls + '">' + Math.round(acc * 100) + '%</td><td>' + (conf ? escapeHtml(conf[0]) + ' (' + conf[1] + ')' : '—') + '</td></tr>';
+    }
+    html += '</table><p class="warn">هذا اختبار على صورك أنت (نفس الأماكن والإضاءة غالباً)، فالدقة الفعلية على هواتف الناس في الشارع <strong>أقل</strong>. الأصناف الحمراء تحتاج صوراً أكثر تنوعاً أو دمجها/تفريقها.</p>';
+    const okAll = [...stats.values()].flatMap(s => s.okScores).sort((a, b) => a - b);
+    if (okAll.length) html += '<p>أدنى 5٪ من درجات التطابق الصحيحة ≈ ' + okAll[Math.floor(okAll.length * 0.05)].toFixed(2) + ' (للمقارنة مع حدود التطبيق الابتدائية 0.55؛ استخدمها في المعايرة).</p>';
+    $('report').innerHTML = html;
+
+    builtPack = {
+      format: 1, model: MODEL_ID, dim: DIM,
+      id: ($('pack-id').value || 'pack').trim(), name: ($('pack-name').value || 'حزمة').trim(), version: ($('pack-version').value || '0').trim(),
+      built: new Date().toISOString(),
+      classes: classes.map(c => ({ id: c.info.name, name: c.info.name, kind: c.info.kind, vecs: pickPrototypes(c.vecs, MAX_PROTOS).map(encodeVec) }))
+    };
+    const kb = Math.round(JSON.stringify(builtPack).length / 1024);
+    log('✅ اكتمل البناء: ' + builtPack.classes.length + ' صنف، حجم الملف ≈ ' + kb + ' ك.ب.');
+    $('download-btn').disabled = false;
+  } catch (err) { log('❌ ' + (err && err.message ? err.message : err)); $('report').textContent = 'فشل البناء.'; }
+  finally { $('build-btn').disabled = files.length === 0; }
+});
+
+$('download-btn').addEventListener('click', () => {
+  if (!builtPack) return;
+  const blob = new Blob([JSON.stringify(builtPack)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = builtPack.id + '.json';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  log('نُزّل الملف ' + builtPack.id + '.json — أضفه إلى مجلد packs/ وإلى manifest.json هناك (انظر README).');
+});
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+</script>
+</body>
+</html>
